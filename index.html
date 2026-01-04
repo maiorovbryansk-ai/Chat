@@ -1084,7 +1084,7 @@
       const { data } = await supabase.from('message_reactions').select('*').eq('message_id', messageId);
       reactionsCache[messageId] = data || [];
     }
-
+    
     function highlightChat(chatId){
       const node = document.getElementById('chat-'+chatId);
       if(node) node.classList.add('active');
