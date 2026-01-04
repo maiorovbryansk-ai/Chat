@@ -253,19 +253,19 @@
   <!-- Dependencies: Supabase JS (ESM), Emoji picker (Emoji Button), simple icons from unpkg -->
   <script type="module">
     // ======= CONFIG =======
-    // Замени на свои значения Supabase
-    const SUPABASE_URL = 'https://ojfcfuelkgvyycwxcuhg.supabase.co';
-    const SUPABASE_ANON_KEY = 'sb_publishable_8Ir4kMxSaXLhHEXLEjZBGw_z2dORzRr';
-    // Bucket для аватаров (создать в Storage -> buckets, публичный или защищённый в зависимости от политики)
-    const AVATARS_BUCKET = 'avatars';
+  const SUPABASE_URL = 'https://ojfcfuelkgvyycwxcuhg.supabase.co';
+  const SUPABASE_ANON_KEY = 'sb_publishable_8Ir4kMxSaXLhHEXLEjZBGw_z2dORzRr';
+  const AVATARS_BUCKET = 'avatars';
 
-    // ======= IMPORTS =======
-    import { createClient } from 'https://cdn.skypack.dev/@supabase/supabase-js';
-    import { EmojiButton } from 'https://cdn.jsdelivr.net/npm/@joeattardi/emoji-button@4.6.2/dist/index.js';
+  // ======= IMPORTS (ТОЛЬКО esm.sh) =======
+  import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+  import { EmojiButton } from 'https://esm.sh/@joeattardi/emoji-button@4.6.2';
 
-    // Инициализация Supabase
-    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-      realtime: { params: { eventsPerSecond: 10 } }
+  // ======= INIT SUPABASE =======
+  const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  window.supabase = supabase; // для проверки в консоли
+
+  console.log('✅ Supabase loaded', supabase);
     });
 
     // ======= UI helpers =======
