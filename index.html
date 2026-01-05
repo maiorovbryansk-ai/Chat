@@ -798,89 +798,84 @@
       };
     }
 
-    // === ИНИЦИАЛИЗАЦИЯ ===
-    async function initApp() {
-      console.log('🚀 Инициализация приложения...');
+    // === ФУНКЦИИ UI HANDLERS ===
+    function setupUIHandlers() {
+      console.log('🎛️ Настройка обработчиков UI...');
       
-      setupUIHandlers();
-      
-      // Слушаем изменения аутентификации
-      supabase.auth.onAuthStateChange(async (event, session) => {
-        console.log('🔑 Изменение состояния аутентификации:', event);
-        
-        switch (event) {
-          case 'SIGNED_IN':
-            console.log('✅ Пользователь вошел');
-            if (session?.user) {
-              await ensureProfile(session.user);
-              await loadInitialData();
-              setupSessionRefresh();
-            }
-            break;
-            
-          case 'SIGNED_OUT':
-            console.log('🚪 Пользователь вышел');
-            handleSignOut();
-            break;
-            
-          case 'TOKEN_REFRESHED':
-            console.log('🔄 Токен обновлен');
-            break;
-            
-          case 'USER_UPDATED':
-            console.log('👤 Пользователь обновлен');
-            break;
-            
-          case 'INITIAL_SESSION':
-            console.log('🔐 Начальная сессия');
-            if (session?.user) {
-              await ensureProfile(session.user);
-              await loadInitialData();
-              setupSessionRefresh();
-            }
-            break;
+      // Отправка сообщений
+      $('#sendBtn').onclick = sendMessage;
+      $('#messageInput').addEventListener('keydown', (e) => {
+        if(e.key === 'Enter' && !e.shiftKey) { 
+          e.preventDefault(); 
+          sendMessage(); 
         }
       });
+      
+      // Кнопки чата
+      $('#btnNewChat').onclick = openCreateChat;
+      $('#btnAddMember').onclick = openAddMemberModal;
+      $('#btnLeaveChat').onclick = leaveChatConfirm;
+      $('#btnSearch').onclick = handleSearch;
+      
+      // Поиск
+      $('#searchInput').addEventListener('keydown', (e) => { 
+        if(e.key === 'Enter') handleSearch(); 
+      });
 
-      // Пытаемся восстановить сессию при загрузке
+      // Emoji picker
       try {
-        const restored = await restoreSession();
-        if (!restored) {
-          console.log('👤 Активная сессия не найдена');
-          renderAuthControls();
-        }
+        const picker = new EmojiButton({ position: 'top-end', zIndex: 9999 });
+        $('#emojiBtn').addEventListener('click', () => picker.togglePicker($('#emojiBtn')));
+        picker.on('emoji', emoji => {
+          const area = $('#messageInput');
+          area.value = area.value + emoji;
+          area.focus();
+        });
       } catch (err) {
-        console.error('❌ Ошибка инициализации:', err);
-        renderAuthControls();
+        console.warn('⚠️ Emoji picker не загрузился:', err);
       }
 
-      setupRealtime();
+      // Закрытие модального окна
+      $('#modal').addEventListener('click', (e) => {
+        if(e.target === $('#modal')) closeModal();
+      });
       
-      // Принудительный рендеринг через секунду на всякий случай
-      setTimeout(() => {
-        if (!currentUser) {
-          renderAuthControls();
-        }
-      }, 1000);
+      // Экспорт функций в глобальную область видимости
+      window.closeModal = closeModal;
     }
 
-    // === ОСТАЛЬНЫЕ ФУНКЦИИ (без изменений) ===
+    // === ФУНКЦИИ ЧАТА ===
     async function loadInitialData() {
-      await loadChatsList();
-      renderAuthControls();
+      try {
+        await loadChatsList();
+      } catch (err) {
+        console.error('❌ Ошибка загрузки данных:', err);
+      }
     }
 
     async function loadChatsList() {
-      if(!currentUser) return;
+      if(!currentUser) {
+        console.log('👤 Нет пользователя, пропускаем загрузку чатов');
+        return;
+      }
+      
+      console.log('📋 Загрузка списка чатов...');
       
       try {
         // Получаем ID чатов, где пользователь участник
-        const { data: memberChats } = await supabase
+        const { data: memberChats, error: memberError } = await supabase
           .from('chat_members')
           .select('chat_id')
           .eq('user_id', currentUser);
           
+        if (memberError) {
+          console.error('❌ Ошибка загрузки членства в чатах:', memberError);
+          return;
+        }
+        
         const chatIds = memberChats?.map(x => x.chat_id) || [];
+        
+        console.log(`📊 Найдено ${chatIds.length} чатов`);
         
         if (chatIds.length === 0) {
           chatsCache = {};
@@ -889,25 +884,28 @@
         }
         
         // Получаем чаты
-        const { data: myChats, error: err2 } = await supabase
+        const { data: myChats, error: chatsError } = await supabase
           .from('chats')
           .select('id,name,avatar_url,is_group,creator,created_at')
           .in('id', chatIds);
 
-        if(err2) {
-          console.error('❌ Ошибка загрузки чатов:', err2);
+        if(chatsError) {
+          console.error('❌ Ошибка загрузки чатов:', chatsError);
           return;
         }
+        
+        console.log(`✅ Загружено ${myChats?.length || 0} чатов`);
         
         chatsCache = {};
         for(const c of (myChats || [])){
           chatsCache[c.id] = c;
         }
         
+        // Загружаем метаданные для каждого чата
         await Promise.all(Object.keys(chatsCache).map(cid => loadChatMeta(cid)));
         renderChatsList();
       } catch (err) {
-        console.error('❌ Ошибка в loadChatsList:', err);
+        console.error('❌ Критическая ошибка в loadChatsList:', err);
       }
     }
 
@@ -935,15 +933,20 @@
 
     function renderChatsList() {
       const list = $('#chatsList');
-      if (!list) return;
-      
-      list.innerHTML = '';
-      const chatEntries = Object.values(chatsCache).sort((a,b)=> new Date(b.created_at) - new Date(a.created_at));
-      
-      if (chatEntries.length === 0) {
-        list.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--muted);">Нет чатов</div>';
+      if (!list) {
+        console.error('❌ Элемент chatsList не найден!');
         return;
       }
+      
+      list.innerHTML = '';
+      const chatEntries = Object.values(chatsCache).sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
+      
+      if (chatEntries.length === 0) {
+        list.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--muted);">Нет чатов. Создайте первый!</div>';
+        return;
+      }
+      
+      console.log(`🎨 Рендеринг ${chatEntries.length} чатов`);
       
       for(const c of chatEntries){
         const item = $c('div', { class:'chat-item', id:'chat-'+c.id });
@@ -958,13 +961,18 @@
         }
         
         const meta = $c('div', { class:'meta' });
-        const title = $c('div', { class:'title', text: c.is_group ? (c.name || 'Группа') : 'Личный чат' });
-        const subtitle = $c('div', { class:'subtitle', text: 'Загрузка...' });
+        const title = $c('div', { 
+          class:'title', 
+          text: c.is_group ? (c.name || 'Группа') : 'Личный чат' 
+        });
         
+        const subtitle = $c('div', { class:'subtitle', text: 'Загрузка...' });
         const msgs = messagesCache[c.id] || [];
+        
         if(msgs.length){
           const m = msgs[msgs.length-1];
-          subtitle.textContent = (m.deleted ? 'Сообщение удалено' : (m.content || '').slice(0,40)) + (m.edited ? ' (отред.)' : '');
+          const content = m.deleted ? 'Сообщение удалено' : (m.content || '').slice(0,40);
+          subtitle.textContent = content + (m.edited ? ' (отред.)' : '');
         } else {
           subtitle.textContent = 'Нет сообщений';
         }
@@ -1000,9 +1008,791 @@
       return cnt;
     }
 
-    // === ОСТАЛЬНЫЕ ФУНКЦИИ ЧАТА (остаются без изменений) ===
-    // ... (функции openChat, sendMessage, setupUIHandlers и остальные)
-    // ВАЖНО: Все остальные функции из предыдущего кода должны быть здесь!
+    async function openChat(chatId) {
+      if(!chatId) return;
+      
+      console.log('💬 Открытие чата:', chatId);
+      
+      try {
+        activeChat = chatsCache[chatId];
+        
+        if(!activeChat){
+          const { data } = await supabase.from('chats').select('*').eq('id', chatId).single();
+          if (data) {
+            chatsCache[chatId] = data;
+            activeChat = data;
+          } else {
+            toast('Чат не найден');
+            return;
+          }
+        }
+        
+        // Подсветка активного чата
+        document.querySelectorAll('.chat-item').forEach(n => n.classList.remove('active'));
+        const node = document.getElementById('chat-'+chatId);
+        if(node) node.classList.add('active');
+        
+        // Обновление заголовка
+        $('#activeChatAvatar').style.background = activeChat.avatar_url ? `url(${activeChat.avatar_url}) center/cover` : '';
+        $('#activeChatAvatar').textContent = activeChat.avatar_url ? '' : (activeChat.name || 'C').charAt(0).toUpperCase();
+        $('#activeChatTitle').textContent = activeChat.is_group ? (activeChat.name || 'Группа') : renderPrivateTitle(chatId);
+        $('#activeChatSubtitle').textContent = 'Загрузка сообщений...';
+
+        // Загрузка сообщений и участников
+        const [{ data: msgs }, { data: members }] = await Promise.all([
+          supabase
+            .from('messages')
+            .select('id,chat_id,sender_id,content,created_at,updated_at,edited,deleted')
+            .eq('chat_id', chatId)
+            .order('created_at', { ascending:true })
+            .limit(100),
+          supabase
+            .from('chat_members')
+            .select('user_id,role,last_read_at,profiles(id,nickname,avatar_url)')
+            .eq('chat_id', chatId)
+        ]);
+        
+        messagesCache[chatId] = msgs || [];
+        membersCache[chatId] = members || [];
+
+        renderMessages(chatId);
+        
+        // Отметка как прочитанного
+        await supabase
+          .from('chat_members')
+          .update({ last_read_at: new Date().toISOString() })
+          .eq('chat_id', chatId)
+          .eq('user_id', currentUser);
+          
+        console.log('✅ Чат открыт:', activeChat.name || 'Без названия');
+        
+      } catch (err) {
+        console.error('❌ Ошибка открытия чата:', err);
+        toast('Ошибка загрузки чата');
+      }
+    }
+
+    function renderPrivateTitle(chatId) {
+      const members = membersCache[chatId] || [];
+      const other = members.find(m => m.user_id !== currentUser);
+      if(other && other.profiles) return other.profiles.nickname || other.profiles.id.slice(0,8);
+      return 'Личный чат';
+    }
+
+    function renderMessages(chatId) {
+      const root = $('#messages');
+      if (!root) return;
+      
+      root.innerHTML = '';
+      const msgs = messagesCache[chatId] || [];
+      
+      if (msgs.length === 0) {
+        root.innerHTML = '<div style="text-align: center; padding: 40px; color: var(--muted);">Нет сообщений. Начните общение!</div>';
+        $('#activeChatSubtitle').textContent = 'Нет сообщений';
+        return;
+      }
+      
+      console.log(`💭 Рендеринг ${msgs.length} сообщений`);
+      
+      for(const m of msgs){
+        const isMe = m.sender_id === currentUser;
+        const msg = $c('div', { class: 'message ' + (isMe ? 'me' : '') });
+        
+        const meta = $c('div', { class:'meta' });
+        const senderProfile = getProfileForId(m.sender_id);
+        const senderName = senderProfile?.nickname || (m.sender_id?.slice(0,8) || 'Unknown');
+        
+        const time = new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        meta.innerHTML = `<div style="font-weight:700">${senderName}</div><div style="font-size:12px;color:var(--muted)">${time}</div>`;
+        
+        if(m.edited) meta.innerHTML += `<div style="font-size:12px;color:var(--muted);margin-left:8px">(ред.)</div>`;
+        
+        const content = $c('div', { class:'content', text: m.deleted ? 'Сообщение удалено' : m.content });
+        msg.appendChild(meta);
+        msg.appendChild(content);
+        
+        // Действия с сообщением
+        if(!m.deleted){
+          const row = $c('div', { class:'row' });
+          
+          // Реакции
+          const reacts = reactionsCache[m.id] || [];
+          if(reacts.length){
+            const small = $c('div', { class:'small', text: reacts.map(r => r.emoji).join(' ') });
+            row.appendChild(small);
+          }
+          
+          // Кнопки действий (только для своих сообщений)
+          if(isMe){
+            const editBtn = $c('button', { class:'btn ghost', text:'Ред.', style: 'font-size: 11px; padding: 4px 8px;' });
+            editBtn.onclick = () => openEditMessage(m);
+            
+            const delBtn = $c('button', { class:'btn ghost', text:'Удал.', style: 'font-size: 11px; padding: 4px 8px;' });
+            delBtn.onclick = () => deleteMessageConfirm(m.id);
+            
+            row.appendChild(editBtn);
+            row.appendChild(delBtn);
+          }
+          
+          // Кнопка реакции
+          const reactBtn = $c('button', { class:'btn ghost', text:'❤', style: 'font-size: 11px; padding: 4px 8px;' });
+          reactBtn.onclick = () => openEmojiForMessage(m.id);
+          row.appendChild(reactBtn);
+          
+          msg.appendChild(row);
+        }
+        
+        root.appendChild(msg);
+      }
+      
+      // Прокрутка вниз
+      setTimeout(() => {
+        root.scrollTop = root.scrollHeight;
+        $('#activeChatSubtitle').textContent = `${msgs.length} сообщений`;
+      }, 100);
+    }
+
+    function getProfileForId(uid) {
+      // Ищем в кэше участников
+      for(const mid in membersCache){
+        const m = (membersCache[mid] || []).find(x => x.user_id === uid);
+        if(m && m.profiles) return m.profiles;
+      }
+      
+      // Если это текущий пользователь
+      if(currentProfile?.id === uid) return currentProfile;
+      
+      return null;
+    }
+
+    async function sendMessage() {
+      if(!activeChat) {
+        toast('Выбери чат для отправки сообщения');
+        return;
+      }
+      
+      const content = $('#messageInput').value.trim();
+      if(!content) {
+        toast('Введите сообщение');
+        return;
+      }
+      
+      console.log('📤 Отправка сообщения в чат:', activeChat.id);
+      
+      try {
+        const payload = {
+          chat_id: activeChat.id,
+          sender_id: currentUser,
+          content,
+          created_at: new Date().toISOString()
+        };
+        
+        const { data, error } = await supabase.from('messages').insert(payload).select().single();
+        
+        if(error) {
+          console.error('❌ Ошибка отправки:', error);
+          toast('Ошибка отправки: ' + error.message);
+        } else {
+          $('#messageInput').value = '';
+          toast('Сообщение отправлено');
+        }
+      } catch (err) {
+        console.error('❌ Критическая ошибка отправки:', err);
+        toast('Ошибка отправки сообщения');
+      }
+    }
+
+    async function openEditMessage(message) {
+      openModal(`
+        <h3>Редактирование сообщения</h3>
+        <div class="field" style="margin-top:8px">
+          <textarea id="edit_content" rows="4" style="width: 100%;">${escapeHtml(message.content)}</textarea>
+        </div>
+        <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:8px">
+          <button id="edit_save" class="btn">Сохранить</button>
+          <button class="btn ghost" onclick="closeModal()">Отмена</button>
+        </div>
+      `);
+      
+      $('#edit_save').onclick = async () => {
+        const newContent = $('#edit_content').value.trim();
+        if(!newContent) {
+          toast('Сообщение не может быть пустым');
+          return;
+        }
+        
+        const { error } = await supabase
+          .from('messages')
+          .update({ 
+            content: newContent, 
+            edited: true, 
+            updated_at: new Date().toISOString() 
+          })
+          .eq('id', message.id)
+          .eq('sender_id', currentUser);
+          
+        if(error) {
+          toast('Ошибка: ' + error.message);
+        } else {
+          closeModal();
+          toast('Сообщение обновлено');
+        }
+      };
+    }
+
+    async function deleteMessageConfirm(messageId) {
+      if(!confirm('Удалить сообщение?')) return;
+      
+      const { error } = await supabase
+        .from('messages')
+        .update({ 
+          deleted: true, 
+          content: null 
+        })
+        .eq('id', messageId)
+        .eq('sender_id', currentUser);
+        
+      if(error) {
+        toast('Ошибка удаления: ' + error.message);
+      } else {
+        toast('Сообщение удалено');
+      }
+    }
+
+    function openEmojiForMessage(messageId) {
+      try {
+        const emojiPicker = new EmojiButton({ position: 'top-end', zIndex: 9999 });
+        emojiPicker.on('emoji', async (emoji) => {
+          const existing = (reactionsCache[messageId] || []).find(r => r.user_id === currentUser && r.emoji === emoji);
+          if(existing){
+            await supabase
+              .from('message_reactions')
+              .delete()
+              .eq('message_id', messageId)
+              .eq('user_id', currentUser)
+              .eq('emoji', emoji);
+          } else {
+            await supabase
+              .from('message_reactions')
+              .insert({ 
+                message_id: messageId, 
+                user_id: currentUser, 
+                emoji 
+              });
+          }
+        });
+        
+        emojiPicker.pickerVisible ? emojiPicker.hidePicker() : emojiPicker.showPicker($('#emojiBtn'));
+      } catch (err) {
+        console.warn('⚠️ Emoji picker не работает:', err);
+        toast('Реакции временно недоступны');
+      }
+    }
+
+    function openCreateChat() {
+      openModal(`
+        <h3>Создать чат</h3>
+        <div class="field" style="margin-top:8px">
+          <label>Название (для группового чата)</label>
+          <input id="cc_name" placeholder="Название группы (опционально)" />
+        </div>
+        <div class="field" style="margin-top:8px">
+          <label>Тип</label>
+          <select id="cc_type">
+            <option value="private">Личный (1:1)</option>
+            <option value="group">Группа</option>
+          </select>
+        </div>
+        <div class="field" style="margin-top:8px">
+          <label>Добавить участников (@nickname, через запятую)</label>
+          <input id="cc_members" placeholder="@alice,@bob" />
+        </div>
+        <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:8px">
+          <button id="cc_create" class="btn">Создать</button>
+          <button class="btn ghost" onclick="closeModal()">Отмена</button>
+        </div>
+      `);
+      
+      $('#cc_create').onclick = async () => {
+        const type = $('#cc_type').value;
+        const isGroup = type === 'group';
+        const name = $('#cc_name').value.trim();
+        const raw = $('#cc_members').value.trim();
+        const nicks = raw.split(',').map(s => s.trim()).filter(Boolean);
+        
+        let users = [];
+        if(nicks.length){
+          const { data: found } = await supabase
+            .from('profiles')
+            .select('id,nickname,avatar_url')
+            .in('nickname', nicks);
+            
+          if(found) users.push(...found);
+        }
+        
+        // Проверка для личного чата
+        if(!isGroup && users.length === 1){
+          const otherId = users[0].id;
+          
+          // Ищем существующий личный чат
+          const { data: existingChats } = await supabase
+            .from('chats')
+            .select('id,is_group')
+            .eq('is_group', false)
+            .in('id', 
+              (await supabase
+                .from('chat_members')
+                .select('chat_id')
+                .eq('user_id', currentUser)
+                .then(r => r.data?.map(x => x.chat_id) || [])
+              )
+            );
+            
+          if(existingChats && existingChats.length > 0){
+            // Проверяем каждый чат на наличие второго участника
+            for(const chat of existingChats){
+              const { data: members } = await supabase
+                .from('chat_members')
+                .select('user_id')
+                .eq('chat_id', chat.id);
+                
+              if(members && members.some(m => m.user_id === otherId)){
+                closeModal();
+                chatsCache[chat.id] = chat;
+                await loadChatMeta(chat.id);
+                renderChatsList();
+                openChat(chat.id);
+                return;
+              }
+            }
+          }
+        }
+
+        // Создаем новый чат
+        const { data: chat, error } = await supabase
+          .from('chats')
+          .insert({
+            name: isGroup ? (name || 'Группа') : null,
+            is_group: isGroup,
+            creator: currentUser
+          })
+          .select()
+          .single();
+        
+        if(error) {
+          toast('Ошибка создания: ' + error.message);
+          return;
+        }
+        
+        // Добавляем участников
+        const membersToInsert = [{ 
+          chat_id: chat.id, 
+          user_id: currentUser, 
+          role: 'creator' 
+        }];
+        
+        for(const u of users){
+          membersToInsert.push({ 
+            chat_id: chat.id, 
+            user_id: u.id, 
+            role: 'member' 
+          });
+        }
+        
+        await supabase.from('chat_members').insert(membersToInsert);
+        chatsCache[chat.id] = chat;
+        closeModal();
+        
+        await loadChatMeta(chat.id);
+        renderChatsList();
+        openChat(chat.id);
+        toast('Чат создан!');
+      };
+    }
+
+    function openAddMemberModal() {
+      if(!activeChat) {
+        toast('Выбери чат');
+        return;
+      }
+      
+      openModal(`
+        <h3>Добавить участника в чат</h3>
+        <div class="field" style="margin-top:8px">
+          <label>@nickname пользователя</label>
+          <input id="am_nick" placeholder="@nickname" />
+        </div>
+        <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:8px">
+          <button id="am_add" class="btn">Добавить</button>
+          <button class="btn ghost" onclick="closeModal()">Отмена</button>
+        </div>
+      `);
+      
+      $('#am_add').onclick = async () => {
+        let nick = $('#am_nick').value.trim();
+        if(!nick) {
+          toast('Введите @nickname');
+          return;
+        }
+        
+        if(!nick.startsWith('@')) {
+          nick = '@' + nick;
+        }
+        
+        const { data: found } = await supabase
+          .from('profiles')
+          .select('id,nickname')
+          .eq('nickname', nick)
+          .single();
+          
+        if(!found) {
+          toast('Пользователь не найден');
+          return;
+        }
+        
+        // Проверяем, не состоит ли уже в чате
+        const { data: existing } = await supabase
+          .from('chat_members')
+          .select('*')
+          .eq('chat_id', activeChat.id)
+          .eq('user_id', found.id)
+          .single();
+          
+        if(existing) {
+          toast('Пользователь уже в чате');
+          return;
+        }
+        
+        const { error } = await supabase
+          .from('chat_members')
+          .insert({ 
+            chat_id: activeChat.id, 
+            user_id: found.id, 
+            role: 'member' 
+          });
+          
+        if(error) {
+          toast('Ошибка: ' + error.message);
+        } else {
+          toast('Участник добавлен');
+          closeModal();
+        }
+      };
+    }
+
+    async function leaveChatConfirm() {
+      if(!activeChat) return;
+      
+      if(!confirm('Выйти из чата?')) return;
+      
+      // Если создатель чата
+      if(activeChat.creator === currentUser){
+        if(!confirm('Ты создатель чата. Удалить чат полностью?')) return;
+        
+        const { error } = await supabase
+          .from('chats')
+          .delete()
+          .eq('id', activeChat.id)
+          .eq('creator', currentUser);
+          
+        if(error) {
+          toast('Ошибка удаления чата: ' + error.message);
+        } else {
+          toast('Чат удалён');
+          delete chatsCache[activeChat.id];
+          activeChat = null;
+          renderChatsList();
+          clearMessages();
+        }
+        return;
+      }
+      
+      // Если обычный участник
+      const { error } = await supabase
+        .from('chat_members')
+        .delete()
+        .eq('chat_id', activeChat.id)
+        .eq('user_id', currentUser);
+        
+      if(error) {
+        toast('Ошибка выхода: ' + error.message);
+      } else {
+        toast('Ты вышел из чата');
+        delete chatsCache[activeChat.id];
+        activeChat = null;
+        renderChatsList();
+        clearMessages();
+      }
+    }
+
+    function clearMessages() {
+      const messagesEl = $('#messages');
+      if (messagesEl) messagesEl.innerHTML = '';
+      
+      $('#activeChatTitle').textContent = 'Выбери чат';
+      $('#activeChatSubtitle').textContent = 'Информация о чате';
+      
+      const avatarEl = $('#activeChatAvatar');
+      if (avatarEl) {
+        avatarEl.style.background = '';
+        avatarEl.textContent = '?';
+      }
+    }
+
+    function clearUI() {
+      const chatsList = $('#chatsList');
+      if (chatsList) chatsList.innerHTML = '';
+      
+      clearMessages();
+    }
+
+    async function handleSearch() {
+      const q = $('#searchInput').value.trim();
+      if(!q) {
+        toast('Введите поисковый запрос');
+        return;
+      }
+      
+      console.log('🔍 Поиск:', q);
+      
+      if(q.startsWith('@')){
+        const nick = q;
+        const { data } = await supabase
+          .from('profiles')
+          .select('id,nickname,avatar_url')
+          .ilike('nickname', nick + '%')
+          .limit(20);
+          
+        if(!data || data.length === 0) {
+          toast('Пользователи не найдены');
+          return;
+        }
+        
+        openModal(`<h3>Результаты поиска пользователей</h3><div id="searchResults" style="margin-top:8px; max-height: 400px; overflow-y: auto;"></div>`);
+        const container = $('#searchResults');
+        
+        for(const p of data){
+          const item = $c('div', { class:'chat-item' });
+          item.onclick = async () => {
+            const otherId = p.id;
+            
+            // Создаем или находим личный чат
+            const { data: existingChats } = await supabase
+              .from('chats')
+              .select('id,is_group')
+              .eq('is_group', false)
+              .in('id', 
+                (await supabase
+                  .from('chat_members')
+                  .select('chat_id')
+                  .eq('user_id', currentUser)
+                  .then(r => r.data?.map(x => x.chat_id) || [])
+                )
+              );
+              
+            let chatId = null;
+            
+            if(existingChats && existingChats.length > 0){
+              for(const chat of existingChats){
+                const { data: members } = await supabase
+                  .from('chat_members')
+                  .select('user_id')
+                  .eq('chat_id', chat.id);
+                  
+                if(members && members.some(m => m.user_id === otherId)){
+                  chatId = chat.id;
+                  break;
+                }
+              }
+            }
+            
+            if(!chatId){
+              // Создаем новый чат
+              const { data: newChat } = await supabase
+                .from('chats')
+                .insert({
+                  is_group: false,
+                  creator: currentUser
+                })
+                .select()
+                .single();
+                
+              if(newChat){
+                await supabase.from('chat_members').insert([
+                  { chat_id: newChat.id, user_id: currentUser, role: 'creator' },
+                  { chat_id: newChat.id, user_id: otherId, role: 'member' }
+                ]);
+                chatId = newChat.id;
+              }
+            }
+            
+            if(chatId){
+              closeModal();
+              await loadChatMeta(chatId);
+              renderChatsList();
+              openChat(chatId);
+            } else {
+              toast('Не удалось создать чат');
+            }
+          };
+          
+          const av = $c('div', { class:'avatar' });
+          if(p.avatar_url) {
+            av.style.background = `url(${p.avatar_url}) center/cover`;
+            av.textContent = '';
+          } else {
+            av.textContent = (p.nickname || 'U').substring(0,2).toUpperCase();
+          }
+          
+          const meta = $c('div', { class:'meta' });
+          meta.innerHTML = `<div class="title">${p.nickname}</div><div class="subtitle">${p.id.slice(0,8)}</div>`;
+          
+          item.appendChild(av);
+          item.appendChild(meta);
+          container.appendChild(item);
+        }
+      } else {
+        // Поиск чатов по названию
+        const { data } = await supabase
+          .from('chats')
+          .select('id,name,avatar_url,is_group')
+          .ilike('name', `%${q}%`)
+          .limit(30);
+          
+        if(!data || data.length === 0) {
+          toast('Чаты не найдены');
+          return;
+        }
+        
+        openModal(`<h3>Результаты поиска чатов</h3><div id="searchChats" style="margin-top:8px; max-height: 400px; overflow-y: auto;"></div>`);
+        const cont = $('#searchChats');
+        
+        for(const c of data){
+          const it = $c('div', { class:'chat-item' });
+          it.onclick = async () => { 
+            closeModal(); 
+            chatsCache[c.id] = c; 
+            await loadChatMeta(c.id); 
+            renderChatsList(); 
+            openChat(c.id); 
+          };
+          
+          const av = $c('div', { class:'avatar' });
+          if(c.avatar_url) {
+            av.style.background = `url(${c.avatar_url}) center/cover`;
+            av.textContent = '';
+          } else {
+            av.textContent = (c.name || 'C').charAt(0).toUpperCase();
+          }
+          
+          const meta = $c('div', { class:'meta' });
+          meta.innerHTML = `<div class="title">${c.name || 'Без названия'}</div><div class="subtitle">${c.is_group ? 'Группа' : 'Чат'}</div>`;
+          
+          it.appendChild(av);
+          it.appendChild(meta);
+          cont.appendChild(it);
+        }
+      }
+    }
+
+    function setupRealtime() {
+      console.log('📡 Настройка realtime подписок...');
+      
+      try {
+        const channel = supabase.channel('public:messages')
+          .on('postgres_changes', { 
+            event: 'INSERT', 
+            schema: 'public', 
+            table: 'messages' 
+          }, payload => {
+            console.log('📨 Новое сообщение:', payload.new);
+            const record = payload.new;
+            
+            messagesCache[record.chat_id] = messagesCache[record.chat_id] || [];
+            messagesCache[record.chat_id].push(record);
+            
+            loadChatMeta(record.chat_id).then(() => renderChatsList());
+            
+            if(activeChat && activeChat.id === record.chat_id) {
+              renderMessages(record.chat_id);
+            } else {
+              highlightChat(record.chat_id);
+            }
+          })
+          .on('postgres_changes', { 
+            event: 'UPDATE', 
+            schema: 'public', 
+            table: 'messages' 
+          }, payload => {
+            const rec = payload.new;
+            const list = messagesCache[rec.chat_id] || [];
+            const idx = list.findIndex(m => m.id === rec.id);
+            
+            if(idx >= 0) {
+              list[idx] = rec;
+            } else {
+              list.push(rec);
+            }
+            
+            if(activeChat && activeChat.id === rec.chat_id) {
+              renderMessages(rec.chat_id);
+            }
+            
+            loadChatMeta(rec.chat_id).then(() => renderChatsList());
+          })
+          .on('postgres_changes', { 
+            event: 'DELETE', 
+            schema: 'public', 
+            table: 'messages' 
+          }, payload => {
+            const rec = payload.old;
+            const list = messagesCache[rec.chat_id] || [];
+            messagesCache[rec.chat_id] = list.filter(m => m.id !== rec.id);
+            
+            if(activeChat && activeChat.id === rec.chat_id) {
+              renderMessages(rec.chat_id);
+            }
+            
+            loadChatMeta(rec.chat_id).then(() => renderChatsList());
+          })
+          .subscribe((status) => {
+            console.log('📡 Realtime статус:', status);
+          });
+          
+      } catch (err) {
+        console.error('❌ Ошибка настройки realtime:', err);
+      }
+    }
+
+    async function refreshReactions(messageId) {
+      try {
+        const { data } = await supabase
+          .from('message_reactions')
+          .select('*')
+          .eq('message_id', messageId);
+          
+        reactionsCache[messageId] = data || [];
+      } catch (err) {
+        console.error('❌ Ошибка обновления реакций:', err);
+      }
+    }
+    
+    function highlightChat(chatId) {
+      const node = document.getElementById('chat-'+chatId);
+      if(node) {
+        node.classList.add('active');
+        
+        const badge = node.querySelector('.badge');
+        if(badge) {
+          badge.textContent = String(Number(badge.textContent || 0) + 1);
+        } else {
+          const right = node.querySelector('div:last-child') || $c('div');
+          const newBadge = $c('div', { class:'badge', text: '1' });
+          right.appendChild(newBadge);
+          node.appendChild(right);
+        }
+      }
+    }
 
     // === ИНИЦИАЛИЗАЦИЯ ПРИ ЗАГРУЗКЕ ===
     document.addEventListener('DOMContentLoaded', initApp);
@@ -1014,13 +1804,7 @@
     window.renderAuthControls = renderAuthControls;
     window.renderProfilePreview = renderProfilePreview;
     window.closeModal = closeModal;
-    
-    // Функция для принудительного отображения кнопок
-    window.forceShowAuth = function() {
-      console.log('🔄 Принудительный показ кнопок...');
-      renderAuthControls();
-      renderProfilePreview();
-    };
+    window.forceShowAuth = renderAuthControls;
     
   </script>
 </body>
