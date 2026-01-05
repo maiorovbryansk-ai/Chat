@@ -1794,18 +1794,84 @@
       }
     }
 
-    // === ИНИЦИАЛИЗАЦИЯ ПРИ ЗАГРУЗКЕ ===
-    document.addEventListener('DOMContentLoaded', initApp);
+// === ИНИЦИАЛИЗАЦИЯ ПРИ ЗАГРУЗКЕ ===
+async function initApp() {
+  console.log('🚀 Инициализация приложения...');
+  
+  setupUIHandlers();
+  
+  // Слушаем изменения аутентификации
+  supabase.auth.onAuthStateChange(async (event, session) => {
+    console.log('🔑 Изменение состояния аутентификации:', event);
     
-    // Экспортируем функции для отладки
-    window.supabase = supabase;
-    window.currentUser = () => currentUser;
-    window.currentProfile = () => currentProfile;
-    window.renderAuthControls = renderAuthControls;
-    window.renderProfilePreview = renderProfilePreview;
-    window.closeModal = closeModal;
-    window.forceShowAuth = renderAuthControls;
-    
+    switch (event) {
+      case 'SIGNED_IN':
+        console.log('✅ Пользователь вошел');
+        if (session?.user) {
+          await ensureProfile(session.user);
+          await loadInitialData();
+          setupSessionRefresh();
+        }
+        break;
+        
+      case 'SIGNED_OUT':
+        console.log('🚪 Пользователь вышел');
+        handleSignOut();
+        break;
+        
+      case 'TOKEN_REFRESHED':
+        console.log('🔄 Токен обновлен');
+        break;
+        
+      case 'USER_UPDATED':
+        console.log('👤 Пользователь обновлен');
+        break;
+        
+      case 'INITIAL_SESSION':
+        console.log('🔐 Начальная сессия');
+        if (session?.user) {
+          await ensureProfile(session.user);
+          await loadInitialData();
+          setupSessionRefresh();
+        }
+        break;
+    }
+  });
+
+  // Пытаемся восстановить сессию при загрузке
+  try {
+    const restored = await restoreSession();
+    if (!restored) {
+      console.log('👤 Активная сессия не найдена');
+      renderAuthControls();
+    }
+  } catch (err) {
+    console.error('❌ Ошибка инициализации:', err);
+    renderAuthControls();
+  }
+
+  setupRealtime();
+  
+  // Принудительный рендеринг через секунду на всякий случай
+  setTimeout(() => {
+    if (!currentUser) {
+      renderAuthControls();
+    }
+  }, 1000);
+}
+
+// Экспортируем функции для отладки
+window.supabase = supabase;
+window.currentUser = () => currentUser;
+window.currentProfile = () => currentProfile;
+window.renderAuthControls = renderAuthControls;
+window.renderProfilePreview = renderProfilePreview;
+window.closeModal = closeModal;
+window.forceShowAuth = renderAuthControls;
+window.initApp = initApp;
+
+document.addEventListener('DOMContentLoaded', initApp);
   </script>
+  
 </body>
 </html>
