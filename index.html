@@ -1,19 +1,11 @@
 <!doctype html>
-<!--
-  index.html
-  Полный одностраничный мессенджер на HTML+CSS+VanillaJS с Supabase.
-  Перед запуском: заполнить SUPABASE_URL и SUPABASE_ANON_KEY в секции CONFIG.
-  Комментарии внутри кода помогут ориентироваться и расширять.
--->
 <html lang="ru">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>OneFile Messenger — Supabase</title>
-
-  <!-- Tailwind-like modern look without building - we write our CSS below -->
+  
   <style>
-    /* --- Reset & base --- */
     :root{
       --bg:#0f1724;
       --card:#0b1220;
@@ -28,7 +20,7 @@
     *{box-sizing:border-box}
     html,body,#app{height:100%; margin:0; background:linear-gradient(180deg,#071025 0%, var(--bg) 100%); color:#e6eef8;}
     a{color:inherit}
-    /* --- Layout --- */
+    
     .app {
       display:flex;
       gap:18px;
@@ -60,8 +52,7 @@
       padding:12px;
       box-shadow: inset 0 1px 0 rgba(255,255,255,0.02);
     }
-
-    /* --- Header --- */
+    
     .topbar {
       height:60px;
       display:flex;
@@ -84,8 +75,7 @@
       color:var(--muted);
       width:100%;
     }
-
-    /* --- Chats list --- */
+    
     .chats {
       display:flex;
       flex-direction:column;
@@ -104,7 +94,7 @@
     }
     .chat-item:hover { background:var(--glass-2); }
     .chat-item.active { background:linear-gradient(90deg, rgba(110,231,183,0.08), transparent); box-shadow: 0 6px 14px rgba(12,20,28,0.4); }
-
+    
     .avatar {
       width:44px;height:44px;border-radius:10px;flex-shrink:0;background:linear-gradient(90deg,#14374a,#1f2b3a);display:grid;place-items:center;font-weight:700;color:var(--accent)
     }
@@ -112,8 +102,7 @@
     .meta .title { font-weight:600; font-size:14px; color:#e6f2ff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .meta .subtitle { font-size:12px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
     .badge { background:var(--accent); color:#022; min-width:22px; height:22px; display:inline-grid; place-items:center; padding:0 6px; border-radius:999px; font-weight:700; font-size:12px; }
-
-    /* --- Chat area --- */
+    
     .chat-area { display:flex; flex-direction:column; height: calc(100vh - 80px); min-height:0; }
     .messages {
       flex:1;
@@ -136,7 +125,7 @@
     .message .content { font-size:14px; color:#e8f6f0; }
     .message .row { display:flex; gap:8px; align-items:center; margin-top:8px }
     .message .small { font-size:12px; color:var(--muted) }
-
+    
     .compose {
       display:flex;
       gap:8px;
@@ -151,8 +140,7 @@
       color:#062018; padding:10px 12px; border-radius:10px; cursor:pointer; border:0; font-weight:700;
     }
     .btn.ghost { background:transparent; color:var(--muted); border:1px solid rgba(255,255,255,0.03); }
-
-    /* --- Modals, toasts --- */
+    
     .modal {
       position:fixed; left:0; top:0; right:0; bottom:0; display:none; align-items:center; justify-content:center;
       background:rgba(2,6,23,0.6); z-index:50;
@@ -163,11 +151,10 @@
     .field { display:flex; flex-direction:column; gap:6px; }
     input, select { padding:10px; border-radius:10px; border:0; background:rgba(255,255,255,0.02); color:#e6eef8; min-width:0; outline:none; }
     label { font-size:13px; color:var(--muted) }
-
+    
     .toast { position:fixed; right:18px; bottom:18px; background:linear-gradient(180deg,#0b1220, #071226); padding:12px 16px; border-radius:10px; box-shadow:0 8px 24px rgba(2,6,23,0.6); color:#dff7ea; display:none; z-index:60; }
     .toast.show { display:block; }
-
-    /* --- Responsive --- */
+    
     @media (max-width:880px){
       .sidebar { display:none; }
       .app { padding:8px; }
@@ -177,16 +164,13 @@
 </head>
 <body>
   <div id="app" class="app">
-    <!-- Sidebar -->
     <div class="sidebar panel" id="sidebar">
       <div class="topbar">
         <div style="display:flex; gap:8px; align-items:center">
           <div style="font-weight:800; font-size:18px; color:var(--accent)">OneFile</div>
           <div style="color:var(--muted); font-size:13px">Messenger</div>
         </div>
-        <div id="auth-controls">
-          <!-- Sign in/up buttons or profile will be injected -->
-        </div>
+        <div id="auth-controls"></div>
       </div>
 
       <div class="search">
@@ -204,13 +188,10 @@
       <div class="chats" id="chatsList" aria-live="polite"></div>
 
       <div style="margin-top:auto; display:flex; align-items:center; gap:10px">
-        <div id="profilePreview" style="display:flex; gap:10px; align-items:center; width:100%">
-          <!-- Avatar + nickname -->
-        </div>
+        <div id="profilePreview" style="display:flex; gap:10px; align-items:center; width:100%"></div>
       </div>
     </div>
 
-    <!-- Main area -->
     <div class="main">
       <div class="panel topbar" id="chatHeader">
         <div style="display:flex; gap:12px; align-items:center;">
@@ -227,9 +208,7 @@
       </div>
 
       <div class="panel chat-area">
-        <div id="messages" class="messages" tabindex="0">
-          <!-- Messages will be rendered here -->
-        </div>
+        <div id="messages" class="messages" tabindex="0"></div>
 
         <div class="compose">
           <button id="emojiBtn" class="btn ghost">😊</button>
@@ -240,183 +219,302 @@
     </div>
   </div>
 
-  <!-- Modals -->
   <div id="modal" class="modal" role="dialog" aria-modal="true">
-    <div class="card" id="modalCard">
-      <!-- Content injected -->
-    </div>
+    <div class="card" id="modalCard"></div>
   </div>
 
-  <!-- Toast -->
   <div id="toast" class="toast"></div>
-<script>
-  console.log('PLAIN SCRIPT WORKS');
-</script>
-  <!-- Dependencies: Supabase JS (ESM), Emoji picker (Emoji Button), simple icons from unpkg -->
+
   <script type="module">
-     console.log('MODULE SCRIPT STARTED');
-    // ======= CONFIG =======
-  const SUPABASE_URL = 'https://vhcgcaerztzdqkmplbcg.supabase.co';
-  const SUPABASE_ANON_KEY = 'sb_publishable_i1463Kqkkb8cQbX8t1Vb7Q_iBE4MTEd';
-  const AVATARS_BUCKET = 'avatars';
+    // === КОНФИГУРАЦИЯ ===
+    const SUPABASE_URL = 'https://ваш-проект.supabase.co';
+    const SUPABASE_ANON_KEY = 'ваш-anon-key';
+    const AVATARS_BUCKET = 'avatars';
 
-  // ======= IMPORTS (ТОЛЬКО esm.sh) =======
-  import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-  import { EmojiButton } from 'https://esm.sh/@joeattardi/emoji-button@4.6.2';
+    import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+    import { EmojiButton } from 'https://esm.sh/@joeattardi/emoji-button@4.6.2';
 
-  // ======= INIT SUPABASE =======
-  const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-  window.supabase = supabase; // для проверки в консоли
+    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: {
+        autoRefreshToken: true,
+        persistSession: true,
+        detectSessionInUrl: false,
+        storage: window.localStorage,
+        flowType: 'pkce'
+      }
+    });
 
+    window.supabase = supabase;
 
-    // ======= UI helpers =======
+    let currentUser = null;
+    let currentProfile = null;
+    let activeChat = null;
+    let chatsCache = {};
+    let membersCache = {};
+    let messagesCache = {};
+    let reactionsCache = {};
+    let sessionRefreshInterval = null;
+
     const $ = (sel) => document.querySelector(sel);
     const $c = (tag, attrs = {}) => {
       const el = document.createElement(tag);
-      Object.entries(attrs).forEach(([k,v])=>{
+      Object.entries(attrs).forEach(([k,v]) => {
         if(k === 'class') el.className = v;
         else if(k === 'text') el.textContent = v;
         else el.setAttribute(k, v);
       });
       return el;
     };
+    
     const toast = (text, time=3000) => {
       const t = $('#toast');
       t.textContent = text;
       t.classList.add('show');
-      setTimeout(()=>t.classList.remove('show'), time);
+      setTimeout(() => t.classList.remove('show'), time);
     };
+    
     const openModal = (contentHtml) => {
       $('#modalCard').innerHTML = contentHtml;
       $('#modal').classList.add('open');
     };
+    
     const closeModal = () => $('#modal').classList.remove('open');
+    
+    const escapeHtml = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 
-    // ======= State =======
-    let currentUser = null; // profiles.id (uuid)
-    let currentProfile = null; // profile object
-    let activeChat = null; // chat object
-    let chatsCache = {}; // chatId -> chat object
-    let membersCache = {}; // chatId -> [members]
-    let messagesCache = {}; // chatId -> [messages]
-    let reactionsCache = {}; // messageId -> [reactions]
+    function setupSessionRefresh() {
+      if (sessionRefreshInterval) clearInterval(sessionRefreshInterval);
+      
+      sessionRefreshInterval = setInterval(async () => {
+        if (currentUser) {
+          try {
+            console.log('🔄 Авто-обновление сессии...');
+            const { data: { session }, error } = await supabase.auth.refreshSession();
+            if (error) {
+              console.error('❌ Ошибка обновления сессии:', error);
+              if (error.message.includes('invalid') || error.message.includes('expired')) {
+                toast('Сессия истекла. Войдите снова.');
+                await handleSignOut();
+              }
+            }
+          } catch (err) {
+            console.error('❌ Ошибка обновления:', err);
+          }
+        }
+      }, 25 * 60 * 1000);
+    }
 
-    // ======= Auth & profile handling =======
-    // On load: check auth state
-    window.addEventListener('DOMContentLoaded', initApp);
-    async function initApp(){
-      setupUIHandlers();
-      // Listen to auth changes
-      supabase.auth.onAuthStateChange(async (event, session) => {
-        if(session?.user){
+    async function restoreSession() {
+      try {
+        console.log('🔍 Проверка сессии...');
+        
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        
+        if (sessionError) {
+          console.error('❌ Ошибка сессии:', sessionError);
+          return false;
+        }
+        
+        if (session) {
+          console.log('✅ Сессия найдена, истекает:', new Date(session.expires_at * 1000));
+          
+          const expiresAt = session.expires_at;
+          const now = Math.floor(Date.now() / 1000);
+          
+          if (expiresAt - now < 600) {
+            console.log('🔄 Токен скоро истечет, обновляю...');
+            const { data: refreshed, error: refreshError } = await supabase.auth.refreshSession();
+            if (refreshError) {
+              console.error('❌ Ошибка обновления токена:', refreshError);
+              return false;
+            }
+            console.log('✅ Токен обновлен');
+          }
+          
           await ensureProfile(session.user);
           await loadInitialData();
-        } else {
-          currentUser = null;
-          currentProfile = null;
-          renderAuthControls();
+          setupSessionRefresh();
+          return true;
+        }
+      } catch (err) {
+        console.error('❌ Ошибка восстановления сессии:', err);
+      }
+      
+      return false;
+    }
+
+    async function handleSignOut() {
+      await supabase.auth.signOut();
+      currentUser = null;
+      currentProfile = null;
+      if (sessionRefreshInterval) {
+        clearInterval(sessionRefreshInterval);
+        sessionRefreshInterval = null;
+      }
+      renderAuthControls();
+      clearUI();
+    }
+
+    async function initApp() {
+      console.log('🚀 Инициализация приложения...');
+      
+      setupUIHandlers();
+      
+      supabase.auth.onAuthStateChange(async (event, session) => {
+        console.log('🔑 Изменение состояния аутентификации:', event);
+        
+        switch (event) {
+          case 'SIGNED_IN':
+            console.log('✅ Пользователь вошел');
+            if (session?.user) {
+              await ensureProfile(session.user);
+              await loadInitialData();
+              setupSessionRefresh();
+            }
+            break;
+            
+          case 'SIGNED_OUT':
+            console.log('🚪 Пользователь вышел');
+            handleSignOut();
+            break;
+            
+          case 'TOKEN_REFRESHED':
+            console.log('🔄 Токен обновлен');
+            break;
+            
+          case 'USER_UPDATED':
+            console.log('👤 Пользователь обновлен');
+            break;
         }
       });
 
-      // If already logged in
-      const { data: { user } } = await supabase.auth.getUser();
-      if(user){
-        await ensureProfile(user);
-        await loadInitialData();
-      } else {
+      const restored = await restoreSession();
+      if (!restored) {
+        console.log('👤 Сессия не найдена');
         renderAuthControls();
       }
 
-      // Realtime listeners
       setupRealtime();
     }
 
-    // Ensure there is a row in profiles for auth.user
-    async function ensureProfile(authUser){
-      // Try fetch profile
+    async function ensureProfile(authUser) {
       const uid = authUser.id;
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', uid)
-        .single();
-      if(error && error.code !== 'PGRST116'){ /* ignore not found */ }
-      if(!data){
-        // Create minimal profile with placeholder nickname (user must set nickname)
-        const defaultNick = null;
-        const { data: p, error: insertErr } = await supabase
+      const email = authUser.email || 'user';
+      
+      try {
+        const { data, error } = await supabase
           .from('profiles')
-          .insert({ id: uid, nickname: defaultNick })
-          .select()
+          .select('*')
+          .eq('id', uid)
           .single();
-        if(insertErr) {
-          console.error('profile create err', insertErr);
-        } else currentProfile = p;
-      } else {
-        currentProfile = data;
-      }
-      currentUser = uid;
-      renderAuthControls();
-      renderProfilePreview();
-      // If nickname missing - open modal to set
-      if(!currentProfile.nickname){
-        openProfileEditor({ requireNickname: true });
+        
+        if (error && error.code !== 'PGRST116') {
+          console.error('❌ Ошибка получения профиля:', error);
+        }
+        
+        if (!data) {
+          const tempNick = `@${email.split('@')[0].replace(/[^a-z0-9_]/gi, '').slice(0, 15).toLowerCase() || 'user'}`;
+          
+          const { data: p, error: insertErr } = await supabase
+            .from('profiles')
+            .insert({ 
+              id: uid, 
+              nickname: tempNick,
+              created_at: new Date().toISOString()
+            })
+            .select()
+            .single();
+            
+          if (insertErr) {
+            console.error('❌ Ошибка создания профиля:', insertErr);
+            toast('Ошибка создания профиля');
+          } else {
+            currentProfile = p;
+            console.log('✅ Профиль создан:', p.nickname);
+          }
+        } else {
+          currentProfile = data;
+          console.log('✅ Профиль загружен:', data.nickname);
+        }
+        
+        currentUser = uid;
+        renderAuthControls();
+        renderProfilePreview();
+        
+        if (!currentProfile?.nickname || currentProfile.nickname.startsWith('@' + email.split('@')[0].slice(0, 10))) {
+          setTimeout(() => openProfileEditor({ requireNickname: true }), 500);
+        }
+      } catch (err) {
+        console.error('❌ Критическая ошибка в ensureProfile:', err);
+        toast('Ошибка загрузки профиля');
       }
     }
 
-    // Render auth buttons / profile UI
-    function renderAuthControls(){
+    function renderAuthControls() {
       const el = $('#auth-controls');
       el.innerHTML = '';
-      if(!currentUser){
+      
+      if (!currentUser) {
         const btnIn = $c('button', { class: 'btn', text: 'Войти' });
         btnIn.onclick = () => openSignIn();
+        
         const btnUp = $c('button', { class: 'btn ghost', text: 'Регистрация' });
         btnUp.onclick = () => openSignUp();
+        
         el.appendChild(btnIn);
         el.appendChild(btnUp);
       } else {
-        const btnProfile = $c('button', { class: 'btn ghost', text: (currentProfile?.nickname || 'Профиль') });
+        const btnProfile = $c('button', { 
+          class: 'btn ghost', 
+          text: currentProfile?.nickname ? currentProfile.nickname.slice(0, 12) : 'Профиль' 
+        });
         btnProfile.onclick = () => openProfileEditor();
+        
         const btnOut = $c('button', { class: 'btn', text: 'Выйти' });
         btnOut.onclick = async () => {
-          await supabase.auth.signOut();
-          currentUser = null;
-          currentProfile = null;
-          toast('Вы вышли');
-          renderAuthControls();
-          clearUI();
+          await handleSignOut();
+          toast('Вы вышли из системы');
         };
+        
         el.appendChild(btnProfile);
         el.appendChild(btnOut);
       }
     }
 
-    function renderProfilePreview(){
+    function renderProfilePreview() {
       const node = $('#profilePreview');
       node.innerHTML = '';
-      if(!currentProfile) return;
-      const av = $c('div', { class:'avatar' });
-      if(currentProfile.avatar_url){
+      
+      if (!currentProfile) return;
+      
+      const av = $c('div', { class: 'avatar' });
+      if (currentProfile.avatar_url) {
         av.style.background = `url(${currentProfile.avatar_url}) center/cover`;
         av.textContent = '';
       } else {
-        av.textContent = (currentProfile.nickname || 'U').substring(0,2).toUpperCase();
+        const initials = currentProfile.nickname 
+          ? currentProfile.nickname.slice(1, 3).toUpperCase()
+          : 'U';
+        av.textContent = initials;
       }
-      const nick = $c('div');
-      nick.innerHTML = `<div style="font-weight:700">${currentProfile.nickname || '—'}</div><div style="font-size:12px;color:var(--muted)">id: ${currentProfile.id?.slice(0,8)}</div>`;
+      
+      const info = $c('div');
+      info.innerHTML = `
+        <div style="font-weight:700; font-size:14px">${currentProfile.nickname || 'Без ника'}</div>
+        <div style="font-size:11px; color:var(--muted)">${currentUser?.slice(0, 8) || ''}</div>
+      `;
+      
       node.appendChild(av);
-      node.appendChild(nick);
+      node.appendChild(info);
     }
 
-    // ======= Sign In / Up / Profile Editor Modals =======
-    function openSignIn(){
+    function openSignIn() {
       openModal(`
         <h3>Вход</h3>
         <div class="row" style="margin-top:8px">
           <div style="flex:1" class="field">
             <label>Email</label>
-            <input id="si_email" placeholder="email" />
+            <input id="si_email" placeholder="email@example.com" />
           </div>
         </div>
         <div class="row" style="margin-top:8px">
@@ -427,7 +525,7 @@
         </div>
         <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:12px">
           <button id="si_btn" class="btn">Войти</button>
-          <button class="btn ghost" onclick="document.querySelector('#modal').classList.remove('open')">Отмена</button>
+          <button class="btn ghost" onclick="closeModal()">Отмена</button>
         </div>
       `);
       $('#si_btn').onclick = async () => {
@@ -440,13 +538,13 @@
       };
     }
 
-    function openSignUp(){
+    function openSignUp() {
       openModal(`
         <h3>Регистрация</h3>
         <div class="row" style="margin-top:8px">
           <div style="flex:1" class="field">
             <label>Email</label>
-            <input id="su_email" placeholder="email" />
+            <input id="su_email" placeholder="email@example.com" />
           </div>
         </div>
         <div class="row" style="margin-top:8px">
@@ -457,24 +555,24 @@
         </div>
         <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:12px">
           <button id="su_btn" class="btn">Зарегистрироваться</button>
-          <button class="btn ghost" onclick="document.querySelector('#modal').classList.remove('open')">Отмена</button>
+          <button class="btn ghost" onclick="closeModal()">Отмена</button>
         </div>
       `);
       $('#su_btn').onclick = async () => {
         const email = $('#su_email').value.trim();
         const password = $('#su_password').value;
         if(!email || !password) return toast('Заполни поля');
+        if(password.length < 6) return toast('Пароль минимум 6 символов');
         const { data, error } = await supabase.auth.signUp({ email, password });
         if(error) toast('Ошибка регистрации: ' + error.message);
         else {
-          toast('Письмо для подтверждения отправлено. Дальше нужно задать @nickname.');
+          toast('Регистрация успешна! Теперь войдите.');
           closeModal();
         }
       };
     }
 
-    // Profile editor: set nickname, upload avatar
-    function openProfileEditor(opts = {}){
+    function openProfileEditor(opts = {}) {
       const requireNickname = !!opts.requireNickname;
       openModal(`
         <h3>Профиль</h3>
@@ -486,7 +584,7 @@
             <div class="field">
               <label>Никнейм (формат: @nickname)</label>
               <input id="pe_nickname" placeholder="@nick" value="${currentProfile?.nickname ? currentProfile.nickname : ''}" />
-              <div style="font-size:12px;color:var(--muted)">Никнейм должен быть уникальным. Без пробелов, только латинские буквы, цифры и подчёркивания.</div>
+              <div style="font-size:12px;color:var(--muted)">Только латинские буквы, цифры и подчёркивания.</div>
             </div>
             <div style="display:flex; gap:8px; margin-top:8px">
               <input id="pe_avatar_file" type="file" accept="image/*" />
@@ -494,14 +592,19 @@
             </div>
             <div style="margin-top:10px; display:flex; gap:8px; justify-content:flex-end">
               <button id="pe_save" class="btn">Сохранить</button>
-              <button class="btn ghost" id="pe_close">Закрыть</button>
+              <button class="btn ghost" onclick="closeModal()">Закрыть</button>
             </div>
           </div>
         </div>
       `);
       const av = $('#pe_avatar');
-      if(currentProfile?.avatar_url) av.style.background = `url(${currentProfile.avatar_url}) center/cover`;
-      $('#pe_close').onclick = closeModal;
+      if(currentProfile?.avatar_url) {
+        av.style.background = `url(${currentProfile.avatar_url}) center/cover`;
+        av.textContent = '';
+      } else {
+        av.textContent = currentProfile?.nickname ? currentProfile.nickname.slice(1,3).toUpperCase() : 'U';
+      }
+      
       $('#pe_upload').onclick = async () => {
         const file = $('#pe_avatar_file').files?.[0];
         if(!file) return toast('Выбери файл');
@@ -509,25 +612,23 @@
         const fileName = `avatars/${currentUser}/${Date.now()}.${ext}`;
         const up = await supabase.storage.from(AVATARS_BUCKET).upload(fileName, file, { cacheControl: '3600', upsert: true });
         if(up.error) return toast('Ошибка загрузки: ' + up.error.message);
-        // get public url
         const { data: publicUrl } = supabase.storage.from(AVATARS_BUCKET).getPublicUrl(fileName);
-        // update profile.avatar_url
         const { error } = await supabase.from('profiles').update({ avatar_url: publicUrl.publicUrl }).eq('id', currentUser);
         if(error) return toast('Ошибка обновления профиля: ' + error.message);
         currentProfile.avatar_url = publicUrl.publicUrl;
         av.style.background = `url(${publicUrl.publicUrl}) center/cover`;
+        av.textContent = '';
         renderProfilePreview();
         toast('Аватар обновлён');
       };
+      
       $('#pe_save').onclick = async () => {
         let nick = $('#pe_nickname').value.trim();
         if(!nick && requireNickname) return toast('Нужно задать @nickname');
         if(nick && !nick.startsWith('@')) nick = '@' + nick;
-        // validation: only @ + letters, numbers, underscores, dots
-        if(nick && !/^@[A-Za-z0-9_\.]{3,32}$/.test(nick)) return toast('Неверный формат никнейма');
-        // Check uniqueness (server-side also enforced)
+        if(nick && !/^@[A-Za-z0-9_]{3,20}$/.test(nick)) return toast('Неверный формат никнейма');
         if(nick){
-          const { data: exist } = await supabase.from('profiles').select('id').ilike('nickname', nick).limit(1);
+          const { data: exist } = await supabase.from('profiles').select('id').eq('nickname', nick).limit(1);
           if(exist && exist.length && exist[0].id !== currentUser) return toast('Никнейм уже занят');
         }
         const { error } = await supabase.from('profiles').update({ nickname: nick || null }).eq('id', currentUser);
@@ -539,101 +640,102 @@
       };
     }
 
-    // ======= Loading chats / messages =======
-    async function loadInitialData(){
+    async function loadInitialData() {
       await loadChatsList();
       renderAuthControls();
     }
 
-    async function loadChatsList(){
+    async function loadChatsList() {
       if(!currentUser) return;
-      // Get chats where user is member; include last message info via messages lateral
-      const { data, error } = await supabase
-        .from('chats')
-        .select(`
-          id, name, avatar_url, is_group, creator,
-          chat_members!inner(user_id, role, last_read_at, joined_at),
-          messages:messages(*)
-        `)
-        .in('id', supabase.rpc ? undefined : []); // placeholder to avoid linting
-      // Above heavy select may not be optimal. Use two queries instead.
+      
+      try {
+        const { data: myChats, error: err2 } = await supabase
+          .from('chats')
+          .select('id,name,avatar_url,is_group,creator,created_at')
+          .in('id',
+              (await supabase.from('chat_members').select('chat_id').eq('user_id', currentUser).then(r=>r.data?.map(x=>x.chat_id) || []))
+           );
 
-      // Fetch chats where user is a member
-      const { data: chats, error: cErr } = await supabase
-        .from('chats')
-        .select('id,name,avatar_url,is_group,creator,created_at')
-        .in('id', [])
-        .limit(100); // shim
-      // Instead do a join using RPC-like query:
-      const { data: myChats, error: err2 } = await supabase
-        .from('chats')
-        .select('id,name,avatar_url,is_group,creator,created_at')
-        .in('id',
-            (await supabase.from('chat_members').select('chat_id').eq('user_id', currentUser).then(r=>r.data.map(x=>x.chat_id)))
-         );
-
-      if(err2) {
-        console.error('load chats err', err2);
-        return;
+        if(err2) {
+          console.error('❌ Ошибка загрузки чатов:', err2);
+          return;
+        }
+        
+        chatsCache = {};
+        for(const c of (myChats || [])){
+          chatsCache[c.id] = c;
+        }
+        
+        await Promise.all(Object.keys(chatsCache).map(cid => loadChatMeta(cid)));
+        renderChatsList();
+      } catch (err) {
+        console.error('❌ Ошибка в loadChatsList:', err);
       }
-      // store chats
-      chatsCache = {};
-      for(const c of myChats){
-        chatsCache[c.id] = c;
-      }
-      // Load chat members and last messages separately
-      await Promise.all(Object.keys(chatsCache).map(cid => loadChatMeta(cid)));
-      renderChatsList();
     }
 
-    async function loadChatMeta(chatId){
-      // members
-      const { data: members } = await supabase
-        .from('chat_members')
-        .select('user_id,role,joined_at,last_read_at,profiles(id,nickname,avatar_url)')
-        .eq('chat_id', chatId);
-      membersCache[chatId] = members || [];
-
-      // last messages (limit 1)
-      const { data: msgs } = await supabase
-        .from('messages')
-        .select('id,chat_id,sender_id,content,created_at,edited,deleted')
-        .eq('chat_id', chatId)
-        .order('created_at', { ascending:false })
-        .limit(1);
-      messagesCache[chatId] = msgs ? msgs.slice().reverse() : [];
+    async function loadChatMeta(chatId) {
+      try {
+        const [{ data: members }, { data: msgs }] = await Promise.all([
+          supabase
+            .from('chat_members')
+            .select('user_id,role,joined_at,last_read_at,profiles(id,nickname,avatar_url)')
+            .eq('chat_id', chatId),
+          supabase
+            .from('messages')
+            .select('id,chat_id,sender_id,content,created_at,edited,deleted')
+            .eq('chat_id', chatId)
+            .order('created_at', { ascending:false })
+            .limit(1)
+        ]);
+        
+        membersCache[chatId] = members || [];
+        messagesCache[chatId] = msgs ? msgs.slice().reverse() : [];
+      } catch (err) {
+        console.error('❌ Ошибка загрузки метаданных чата:', err);
+      }
     }
 
-    function renderChatsList(){
+    function renderChatsList() {
       const list = $('#chatsList');
       list.innerHTML = '';
       const chatEntries = Object.values(chatsCache).sort((a,b)=> new Date(b.created_at) - new Date(a.created_at));
+      
       for(const c of chatEntries){
         const item = $c('div', { class:'chat-item', id:'chat-'+c.id });
-        item.onclick = async () => {
-          await openChat(c.id);
-        };
+        item.onclick = async () => await openChat(c.id);
+        
         const av = $c('div', { class:'avatar' });
-        if(c.avatar_url) av.style.background = `url(${c.avatar_url}) center/cover`;
-        else av.textContent = c.name ? c.name.charAt(0).toUpperCase() : 'C';
+        if(c.avatar_url) {
+          av.style.background = `url(${c.avatar_url}) center/cover`;
+          av.textContent = '';
+        } else {
+          av.textContent = c.name ? c.name.charAt(0).toUpperCase() : 'C';
+        }
+        
         const meta = $c('div', { class:'meta' });
         const title = $c('div', { class:'title', text: c.is_group ? (c.name || 'Группа') : 'Личный чат' });
         const subtitle = $c('div', { class:'subtitle', text: 'Загрузка...' });
-        // last message preview
+        
         const msgs = messagesCache[c.id] || [];
         if(msgs.length){
           const m = msgs[msgs.length-1];
           subtitle.textContent = (m.deleted ? 'Сообщение удалено' : (m.content || '').slice(0,40)) + (m.edited ? ' (отред.)' : '');
-        } else subtitle.textContent = 'Нет сообщений';
-        meta.appendChild(title); meta.appendChild(subtitle);
-        // unread counter
+        } else {
+          subtitle.textContent = 'Нет сообщений';
+        }
+        
+        meta.appendChild(title);
+        meta.appendChild(subtitle);
+        
         const member = (membersCache[c.id] || []).find(m => m.user_id === currentUser);
         const unread = computeUnreadCount(c.id, member);
         const right = $c('div');
+        
         if(unread > 0){
           const b = $c('div', { class:'badge', text: String(unread) });
           right.appendChild(b);
         }
+        
         item.appendChild(av);
         item.appendChild(meta);
         item.appendChild(right);
@@ -641,7 +743,7 @@
       }
     }
 
-    function computeUnreadCount(chatId, member){
+    function computeUnreadCount(chatId, member) {
       if(!member) return 0;
       const lastRead = member.last_read_at ? new Date(member.last_read_at) : null;
       const msgs = messagesCache[chatId] || [];
@@ -653,55 +755,70 @@
       return cnt;
     }
 
-    // ======= Open chat, render messages =======
-    async function openChat(chatId){
+    async function openChat(chatId) {
       if(!chatId) return;
-      activeChat = chatsCache[chatId];
-      if(!activeChat){
-        // load chat from server
-        const { data } = await supabase.from('chats').select('*').eq('id', chatId).single();
-        chatsCache[chatId] = data;
-        activeChat = data;
+      
+      try {
+        activeChat = chatsCache[chatId];
+        if(!activeChat){
+          const { data } = await supabase.from('chats').select('*').eq('id', chatId).single();
+          if (data) {
+            chatsCache[chatId] = data;
+            activeChat = data;
+          }
+        }
+        
+        document.querySelectorAll('.chat-item').forEach(n=>n.classList.remove('active'));
+        const node = document.getElementById('chat-'+chatId);
+        if(node) node.classList.add('active');
+        
+        $('#activeChatAvatar').style.background = activeChat.avatar_url ? `url(${activeChat.avatar_url}) center/cover` : '';
+        $('#activeChatAvatar').textContent = activeChat.avatar_url ? '' : (activeChat.name || 'C').charAt(0).toUpperCase();
+        $('#activeChatTitle').textContent = activeChat.is_group ? (activeChat.name || 'Группа') : renderPrivateTitle(chatId);
+        $('#activeChatSubtitle').textContent = 'Загрузка сообщений...';
+
+        const [{ data: msgs }, { data: members }] = await Promise.all([
+          supabase
+            .from('messages')
+            .select('id,chat_id,sender_id,content,created_at,updated_at,edited,deleted')
+            .eq('chat_id', chatId)
+            .order('created_at', { ascending:true })
+            .limit(1000),
+          supabase
+            .from('chat_members')
+            .select('user_id,role,last_read_at,profiles(id,nickname,avatar_url)')
+            .eq('chat_id', chatId)
+        ]);
+        
+        messagesCache[chatId] = msgs || [];
+        membersCache[chatId] = members || [];
+
+        renderMessages(chatId);
+        
+        await supabase
+          .from('chat_members')
+          .update({ last_read_at: new Date().toISOString() })
+          .eq('chat_id', chatId)
+          .eq('user_id', currentUser);
+          
+      } catch (err) {
+        console.error('❌ Ошибка открытия чата:', err);
+        toast('Ошибка загрузки чата');
       }
-      // highlight in UI
-      document.querySelectorAll('.chat-item').forEach(n=>n.classList.remove('active'));
-      const node = document.getElementById('chat-'+chatId);
-      if(node) node.classList.add('active');
-      // render header
-      $('#activeChatAvatar').style.background = activeChat.avatar_url ? `url(${activeChat.avatar_url}) center/cover` : '';
-      $('#activeChatAvatar').textContent = activeChat.avatar_url ? '' : (activeChat.name || 'C').charAt(0).toUpperCase();
-      $('#activeChatTitle').textContent = activeChat.is_group ? (activeChat.name || 'Группа') : renderPrivateTitle(chatId);
-      $('#activeChatSubtitle').textContent = 'Загрузка сообщений...';
-
-      // load messages (last 200)
-      const { data: msgs } = await supabase
-        .from('messages')
-        .select('id,chat_id,sender_id,content,created_at,updated_at,edited,deleted')
-        .eq('chat_id', chatId)
-        .order('created_at', { ascending:true })
-        .limit(1000);
-      messagesCache[chatId] = msgs || [];
-      // load members
-      const { data: members } = await supabase.from('chat_members').select('user_id,role,last_read_at,profiles(id,nickname,avatar_url)').eq('chat_id', chatId);
-      membersCache[chatId] = members || [];
-
-      // render
-      renderMessages(chatId);
-      // mark as read (update last_read_at)
-      await supabase.from('chat_members').update({ last_read_at: new Date().toISOString() }).eq('chat_id', chatId).eq('user_id', currentUser);
     }
 
-    function renderPrivateTitle(chatId){
+    function renderPrivateTitle(chatId) {
       const members = membersCache[chatId] || [];
       const other = members.find(m => m.user_id !== currentUser);
       if(other && other.profiles) return other.profiles.nickname || other.profiles.id.slice(0,8);
       return 'Личный чат';
     }
 
-    function renderMessages(chatId){
+    function renderMessages(chatId) {
       const root = $('#messages');
       root.innerHTML = '';
       const msgs = messagesCache[chatId] || [];
+      
       for(const m of msgs){
         const isMe = m.sender_id === currentUser;
         const msg = $c('div', { class: 'message ' + (isMe ? 'me' : '') });
@@ -710,19 +827,20 @@
         const senderName = senderProfile?.nickname || (m.sender_id?.slice(0,8) || 'Unknown');
         meta.innerHTML = `<div style="font-weight:700">${senderName}</div><div style="font-size:12px;color:var(--muted)">${new Date(m.created_at).toLocaleString()}</div>`;
         if(m.edited) meta.innerHTML += `<div style="font-size:12px;color:var(--muted);margin-left:8px">(отред.)</div>`;
+        
         const content = $c('div', { class:'content', text: m.deleted ? 'Сообщение удалено' : m.content });
         msg.appendChild(meta);
         msg.appendChild(content);
-        // actions row
+        
         const row = $c('div', { class:'row' });
         const small = $c('div', { class:'small', text: '' });
-        // reactions preview (basic)
+        
         const reacts = reactionsCache[m.id] || [];
         if(reacts.length){
           small.textContent = reacts.map(r=>r.emoji).join(' ');
         }
         row.appendChild(small);
-        // if mine - edit/delete buttons
+        
         if(isMe && !m.deleted){
           const edit = $c('button', { class:'btn ghost', text:'Ред.' });
           edit.onclick = () => openEditMessage(m);
@@ -731,7 +849,7 @@
           row.appendChild(edit);
           row.appendChild(del);
         }
-        // reaction button
+        
         const rbtn = $c('button', { class:'btn ghost', text:'❤' });
         rbtn.onclick = () => openEmojiForMessage(m.id);
         row.appendChild(rbtn);
@@ -739,11 +857,14 @@
         msg.appendChild(row);
         root.appendChild(msg);
       }
-      setTimeout(()=>root.scrollTop = root.scrollHeight, 100);
+      
+      setTimeout(() => {
+        root.scrollTop = root.scrollHeight;
+        $('#activeChatSubtitle').textContent = `${msgs.length} сообщений`;
+      }, 100);
     }
 
-    // Helper: get minimal profile cached from members, else fetch
-    function getProfileForId(uid){
+    function getProfileForId(uid) {
       for(const mid in membersCache){
         const m = (membersCache[mid] || []).find(x => x.user_id === uid);
         if(m && m.profiles) return m.profiles;
@@ -752,8 +873,7 @@
       return null;
     }
 
-    // ======= Sending messages =======
-    function setupUIHandlers(){
+    function setupUIHandlers() {
       $('#sendBtn').onclick = sendMessage;
       $('#messageInput').addEventListener('keydown', (e) => {
         if(e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
@@ -764,7 +884,6 @@
       $('#btnSearch').onclick = handleSearch;
       $('#searchInput').addEventListener('keydown', (e)=> { if(e.key==='Enter') handleSearch(); });
 
-      // emoji picker
       const picker = new EmojiButton({ position: 'top-end', zIndex: 9999 });
       $('#emojiBtn').addEventListener('click', () => picker.togglePicker($('#emojiBtn')));
       picker.on('emoji', emoji => {
@@ -773,30 +892,42 @@
         area.focus();
       });
 
-      // modal close on backdrop click
       $('#modal').addEventListener('click', (e) => {
         if(e.target === $('#modal')) closeModal();
       });
+      
+      window.closeModal = closeModal;
     }
 
-    async function sendMessage(){
+    async function sendMessage() {
       if(!activeChat) return toast('Выбери чат');
       const content = $('#messageInput').value.trim();
       if(!content) return;
-      const payload = {
-        chat_id: activeChat.id,
-        sender_id: currentUser,
-        content,
-        created_at: new Date().toISOString()
-      };
-      const { data, error } = await supabase.from('messages').insert(payload).select().single();
-      if(error) return toast('Ошибка отправки: ' + error.message);
-      $('#messageInput').value = '';
-      // messagesCache will be updated via realtime subscription
-      // update chat last activity maybe via trigger on server
+      
+      try {
+        const payload = {
+          chat_id: activeChat.id,
+          sender_id: currentUser,
+          content,
+          created_at: new Date().toISOString()
+        };
+        
+        const { data, error } = await supabase.from('messages').insert(payload).select().single();
+        if(error) {
+          console.error('❌ Ошибка отправки:', error);
+          return toast('Ошибка отправки: ' + error.message);
+        }
+        
+        $('#messageInput').value = '';
+        $('#messageInput').style.height = 'auto';
+        
+      } catch (err) {
+        console.error('❌ Критическая ошибка отправки:', err);
+        toast('Ошибка отправки сообщения');
+      }
     }
 
-    async function openEditMessage(message){
+    async function openEditMessage(message) {
       openModal(`
         <h3>Редактирование</h3>
         <div class="field" style="margin-top:8px">
@@ -804,7 +935,7 @@
         </div>
         <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:8px">
           <button id="edit_save" class="btn">Сохранить</button>
-          <button class="btn ghost" onclick="document.querySelector('#modal').classList.remove('open')">Отмена</button>
+          <button class="btn ghost" onclick="closeModal()">Отмена</button>
         </div>
       `);
       $('#edit_save').onclick = async () => {
@@ -817,17 +948,16 @@
       };
     }
 
-    async function deleteMessageConfirm(messageId){
+    async function deleteMessageConfirm(messageId) {
       if(!confirm('Удалить сообщение?')) return;
       const { error } = await supabase.from('messages').update({ deleted: true, content: null }).eq('id', messageId).eq('sender_id', currentUser);
       if(error) return toast('Ошибка удаления: ' + error.message);
       toast('Сообщение помечено удалённым');
     }
 
-    function openEmojiForMessage(messageId){
+    function openEmojiForMessage(messageId) {
       const emojiPicker = new EmojiButton({ position: 'top-end', zIndex: 9999 });
       emojiPicker.on('emoji', async (emoji) => {
-        // toggle reaction: if user already reacted with same emoji -> remove; else insert
         const existing = (reactionsCache[messageId] || []).find(r => r.user_id === currentUser && r.emoji === emoji);
         if(existing){
           await supabase.from('message_reactions').delete().eq('message_id', messageId).eq('user_id', currentUser).eq('emoji', emoji);
@@ -838,12 +968,7 @@
       emojiPicker.pickerVisible ? emojiPicker.hidePicker() : emojiPicker.showPicker($('#emojiBtn'));
     }
 
-    function escapeHtml(s){
-      return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-    }
-
-    // ======= Chat CRUD =======
-    function openCreateChat(){
+    function openCreateChat() {
       openModal(`
         <h3>Создать чат</h3>
         <div class="field" style="margin-top:8px">
@@ -860,7 +985,7 @@
         </div>
         <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:8px">
           <button id="cc_create" class="btn">Создать</button>
-          <button class="btn ghost" onclick="document.querySelector('#modal').classList.remove('open')">Отмена</button>
+          <button class="btn ghost" onclick="closeModal()">Отмена</button>
         </div>
       `);
       $('#cc_create').onclick = async () => {
@@ -869,37 +994,43 @@
         const name = $('#cc_name').value.trim();
         const raw = $('#cc_members').value.trim();
         const nicks = raw.split(',').map(s=>s.trim()).filter(Boolean);
-        // Resolve nicknames to user ids
-        const users = [];
+        
+        let users = [];
         if(nicks.length){
           const { data: found } = await supabase.from('profiles').select('id,nickname,avatar_url').in('nickname', nicks);
-          if(found && found.length) users.push(...found);
+          if(found) users.push(...found);
         }
-        // If private and only one target - create direct chat with that user
+        
         if(!isGroup && users.length === 1){
-          // Check if chat between two exists
           const otherId = users[0].id;
-          // Query for chats where chat_members = [currentUser, otherId] and is_group=false
-          const { data: pairs } = await supabase.rpc('find_private_chat', { user_a: currentUser, user_b: otherId });
-          if(pairs && pairs.length){
-            closeModal();
-            openChat(pairs[0].id);
-            return;
+          try {
+            const { data: existingChat } = await supabase.rpc('find_or_create_private_chat', { user_a: currentUser, user_b: otherId });
+            if(existingChat && existingChat.id){
+              closeModal();
+              chatsCache[existingChat.id] = existingChat;
+              await loadChatMeta(existingChat.id);
+              renderChatsList();
+              openChat(existingChat.id);
+              return;
+            }
+          } catch (err) {
+            console.log('Функция RPC не найдена, создаю чат вручную');
           }
         }
 
-        // Create chat
         const { data: chat, error } = await supabase.from('chats').insert({
           name: isGroup ? (name || 'Группа') : null,
           is_group: isGroup,
           creator: currentUser
         }).select().single();
+        
         if(error) return toast('Ошибка создания: ' + error.message);
-        // Add creator as member
+        
         const membersToInsert = [{ chat_id: chat.id, user_id: currentUser, role: 'creator' }];
         for(const u of users){
           membersToInsert.push({ chat_id: chat.id, user_id: u.id, role: 'member' });
         }
+        
         await supabase.from('chat_members').insert(membersToInsert);
         chatsCache[chat.id] = chat;
         closeModal();
@@ -909,7 +1040,7 @@
       };
     }
 
-    function openAddMemberModal(){
+    function openAddMemberModal() {
       if(!activeChat) return toast('Выбери чат');
       openModal(`
         <h3>Добавить участника</h3>
@@ -919,7 +1050,7 @@
         </div>
         <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:8px">
           <button id="am_add" class="btn">Добавить</button>
-          <button class="btn ghost" onclick="document.querySelector('#modal').classList.remove('open')">Отмена</button>
+          <button class="btn ghost" onclick="closeModal()">Отмена</button>
         </div>
       `);
       $('#am_add').onclick = async () => {
@@ -928,7 +1059,6 @@
         if(!nick.startsWith('@')) nick = '@' + nick;
         const { data: found } = await supabase.from('profiles').select('id,nickname').eq('nickname', nick).single();
         if(!found) return toast('Пользователь не найден');
-        // Insert into chat_members if not exists
         const { data: existing } = await supabase.from('chat_members').select('*').eq('chat_id', activeChat.id).eq('user_id', found.id).single();
         if(existing) return toast('Пользователь уже в чате');
         const { error } = await supabase.from('chat_members').insert({ chat_id: activeChat.id, user_id: found.id, role: 'member' });
@@ -938,10 +1068,10 @@
       };
     }
 
-    async function leaveChatConfirm(){
+    async function leaveChatConfirm() {
       if(!activeChat) return;
       if(!confirm('Выйти из чата?')) return;
-      // If creator -> cannot leave (must delete)
+      
       if(activeChat.creator === currentUser){
         if(!confirm('Ты создатель чата. Удалить чат полностью?')) return;
         const { error } = await supabase.from('chats').delete().eq('id', activeChat.id).eq('creator', currentUser);
@@ -953,6 +1083,7 @@
         clearMessages();
         return;
       }
+      
       const { error } = await supabase.from('chat_members').delete().eq('chat_id', activeChat.id).eq('user_id', currentUser);
       if(error) return toast('Ошибка выхода: ' + error.message);
       toast('Ты вышел из чата');
@@ -962,7 +1093,7 @@
       clearMessages();
     }
 
-    function clearMessages(){
+    function clearMessages() {
       $('#messages').innerHTML = '';
       $('#activeChatTitle').textContent = 'Выбери чат';
       $('#activeChatSubtitle').textContent = 'Информация о чате';
@@ -970,80 +1101,89 @@
       $('#activeChatAvatar').textContent = '?';
     }
 
-    function clearUI(){
-      document.getElementById('chatsList').innerHTML = '';
+    function clearUI() {
+      $('#chatsList').innerHTML = '';
       clearMessages();
     }
 
-    // ======= Search users & chats =======
-    async function handleSearch(){
+    async function handleSearch() {
       const q = $('#searchInput').value.trim();
       if(!q) return;
-      // If starts with @ -> search users
+      
       if(q.startsWith('@')){
         const nick = q;
         const { data } = await supabase.from('profiles').select('id,nickname,avatar_url').ilike('nickname', nick + '%').limit(20);
         if(!data || !data.length) return toast('Пользователи не найдены');
-        // Show results modal
+        
         openModal(`<h3>Результаты поиска</h3><div id="searchResults" style="margin-top:8px"></div>`);
         const container = $('#searchResults');
+        
         for(const p of data){
           const item = $c('div', { class:'chat-item' });
           item.onclick = async () => {
-            // Start private chat
             const otherId = p.id;
-            // Use RPC to find or create private chat
-            const { data: existing } = await supabase.rpc('find_or_create_private_chat', { user_a: currentUser, user_b: otherId });
-            if(existing && existing.id){
-              closeModal();
-              chatsCache[existing.id] = existing;
-              await loadChatMeta(existing.id);
-              renderChatsList();
-              openChat(existing.id);
-            } else toast('Не удалось создать личный чат');
+            try {
+              const { data: existing } = await supabase.rpc('find_or_create_private_chat', { user_a: currentUser, user_b: otherId });
+              if(existing && existing.id){
+                closeModal();
+                chatsCache[existing.id] = existing;
+                await loadChatMeta(existing.id);
+                renderChatsList();
+                openChat(existing.id);
+              }
+            } catch (err) {
+              toast('Не удалось создать личный чат');
+            }
           };
+          
           const av = $c('div', { class:'avatar' });
           if(p.avatar_url) av.style.background = `url(${p.avatar_url}) center/cover`;
           else av.textContent = (p.nickname || 'U').substring(0,2).toUpperCase();
+          
           const meta = $c('div', { class:'meta' });
           meta.innerHTML = `<div class="title">${p.nickname}</div><div class="subtitle">${p.id.slice(0,8)}</div>`;
-          item.appendChild(av); item.appendChild(meta);
+          item.appendChild(av);
+          item.appendChild(meta);
           container.appendChild(item);
         }
       } else {
-        // Search chats
         const { data } = await supabase.from('chats').select('id,name,avatar_url,is_group').ilike('name', `%${q}%`).limit(30);
         if(!data || !data.length) return toast('Чаты не найдены');
+        
         openModal(`<h3>Чаты</h3><div id="searchChats" style="margin-top:8px"></div>`);
         const cont = $('#searchChats');
+        
         for(const c of data){
           const it = $c('div', { class:'chat-item' });
-          it.onclick = async () => { closeModal(); chatsCache[c.id] = c; await loadChatMeta(c.id); renderChatsList(); openChat(c.id); };
+          it.onclick = async () => { 
+            closeModal(); 
+            chatsCache[c.id] = c; 
+            await loadChatMeta(c.id); 
+            renderChatsList(); 
+            openChat(c.id); 
+          };
+          
           const av = $c('div', { class:'avatar' });
           if(c.avatar_url) av.style.background = `url(${c.avatar_url}) center/cover`;
           else av.textContent = (c.name || 'C').charAt(0).toUpperCase();
+          
           const meta = $c('div', { class:'meta' });
           meta.innerHTML = `<div class="title">${c.name || 'Без названия'}</div><div class="subtitle">${c.is_group ? 'Группа' : 'Чат'}</div>`;
-          it.appendChild(av); it.appendChild(meta);
+          it.appendChild(av);
+          it.appendChild(meta);
           cont.appendChild(it);
         }
       }
     }
 
-    // ======= Realtime subscriptions =======
-    function setupRealtime(){
-      // Subscribe to messages changes for chats the user is member of
-      // Use postgres_changes channel
+    function setupRealtime() {
       const channel = supabase.channel('public:messages')
         .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, payload => {
           const record = payload.new;
-          // push to cache and re-render if chat open
           messagesCache[record.chat_id] = messagesCache[record.chat_id] || [];
           messagesCache[record.chat_id].push(record);
-          // Update chat last message in chat list
           loadChatMeta(record.chat_id).then(()=>renderChatsList());
           if(activeChat && activeChat.id === record.chat_id) renderMessages(record.chat_id);
-          // Show notification badge if not active
           if(!activeChat || activeChat.id !== record.chat_id){
             highlightChat(record.chat_id);
           }
@@ -1064,41 +1204,32 @@
           if(activeChat && activeChat.id === rec.chat_id) renderMessages(rec.chat_id);
           loadChatMeta(rec.chat_id).then(()=>renderChatsList());
         })
-        // chat_members changes (for new membership)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'chat_members' }, payload => {
-          // reload chat meta for affected chat
           const rec = payload.new || payload.old;
           if(rec?.chat_id) loadChatMeta(rec.chat_id).then(()=>renderChatsList());
         })
-        // reactions
         .on('postgres_changes', { event: '*', schema: 'public', table: 'message_reactions' }, payload => {
           const rec = payload.new || payload.old;
           if(!rec) return;
-          // refresh reactionsCache for message
           refreshReactions(rec.message_id);
           if(activeChat && activeChat.id) renderMessages(activeChat.id);
         })
         .subscribe();
     }
 
-    async function refreshReactions(messageId){
+    async function refreshReactions(messageId) {
       const { data } = await supabase.from('message_reactions').select('*').eq('message_id', messageId);
       reactionsCache[messageId] = data || [];
     }
     
-    function highlightChat(chatId){
+    function highlightChat(chatId) {
       const node = document.getElementById('chat-'+chatId);
       if(node) node.classList.add('active');
-      // increment badge count by 1 (naive)
       const badge = node?.querySelector('.badge');
       if(badge) badge.textContent = String(Number(badge.textContent || 0) + 1);
     }
 
-    // ======= Utility: RPC functions assumptions =======
-    // The SQL below includes RPC functions `find_private_chat` and `find_or_create_private_chat`.
-    // If they don't exist, the create-private-chat path will fail; but front-end guards still work.
-
-    // ======= End of app code =======
+    document.addEventListener('DOMContentLoaded', initApp);
   </script>
 </body>
 </html>
