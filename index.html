@@ -957,16 +957,17 @@
         </div>
     </div>
 
+    <!-- Подключаем Supabase JS -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
     <script>
         // ============================================
-        // КОНФИГУРАЦИЯ SUPABASE (МОЖНО ИЗМЕНИТЬ)
+        // КОНФИГУРАЦИЯ SUPABASE (ЗАМЕНИТЕ НА СВОИ)
         // ============================================
         
-        // ЗАМЕНИТЕ ЭТИ ЗНАЧЕНИЯ НА СВОИ ПРИ РАЗВЕРТЫВАНИИ
-        // Получите их в проекте Supabase: Settings → API
-        
-        const DEFAULT_SUPABASE_URL = 'https://geoojvchpycmsbdsmytu.supabase.co';  // Например: 'https://abcdefghijklmnop.supabase.co'
-        const DEFAULT_SUPABASE_KEY = 'sb_publishable_9wNJrGlNHzidAHktXChLXw_nUqvt9NN';  // Например: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
+        // ПОЛУЧИТЕ В ПРОЕКТЕ SUPABASE: Settings → API
+        const DEFAULT_SUPABASE_URL = 'https://geoojvchpycmsbdsmytu.supabase.co';  // Замените на свой URL
+        const DEFAULT_SUPABASE_KEY = 'sb_publishable_9wNJrGlNHzidAHktXChLXw_nUqvt9NN';  // Замените на свой ключ
         
         // ============================================
         // КОНЕЦ КОНФИГУРАЦИИ
@@ -976,7 +977,7 @@
         let supabaseUrl = localStorage.getItem('supabaseUrl') || DEFAULT_SUPABASE_URL;
         let supabaseKey = localStorage.getItem('supabaseKey') || DEFAULT_SUPABASE_KEY;
         
-        let supabase = null;
+        let supabaseClient = null; // Изменили имя переменной
         
         // Состояние приложения
         const appState = {
@@ -1019,8 +1020,13 @@
         
         function initSupabase() {
             try {
+                // Проверяем, что библиотека Supabase загружена
+                if (typeof supabase === 'undefined') {
+                    throw new Error('Библиотека Supabase не загружена. Проверьте подключение к интернету.');
+                }
+                
                 // Инициализируем Supabase клиент
-                supabase = window.supabase.createClient(supabaseUrl, supabaseKey, {
+                supabaseClient = supabase.createClient(supabaseUrl, supabaseKey, {
                     auth: {
                         persistSession: true,
                         autoRefreshToken: true,
@@ -1045,7 +1051,7 @@
         
         async function checkSession() {
             try {
-                const { data: { session }, error } = await supabase.auth.getSession();
+                const { data: { session }, error } = await supabaseClient.auth.getSession();
                 if (error) throw error;
                 
                 if (session) {
@@ -1065,7 +1071,7 @@
         
         async function loadUserProfile(userId) {
             try {
-                const { data: profile, error } = await supabase
+                const { data: profile, error } = await supabaseClient
                     .from('profiles')
                     .select('*')
                     .eq('id', userId)
@@ -1239,7 +1245,7 @@
                 return;
             }
             
-            if (!supabase) {
+            if (!supabaseClient) {
                 errorElement.querySelector('span').textContent = 'Сначала настройте Supabase';
                 errorElement.classList.remove('hidden');
                 openConfigPanel();
@@ -1247,7 +1253,7 @@
             }
             
             try {
-                const { data, error } = await supabase.auth.signInWithPassword({
+                const { data, error } = await supabaseClient.auth.signInWithPassword({
                     email,
                     password
                 });
@@ -1285,7 +1291,7 @@
                 return;
             }
             
-            if (!supabase) {
+            if (!supabaseClient) {
                 errorElement.querySelector('span').textContent = 'Сначала настройте Supabase';
                 errorElement.classList.remove('hidden');
                 openConfigPanel();
@@ -1293,7 +1299,7 @@
             }
             
             try {
-                const { data, error } = await supabase.auth.signUp({
+                const { data, error } = await supabaseClient.auth.signUp({
                     email,
                     password,
                     options: {
@@ -1323,7 +1329,7 @@
         
         async function logout() {
             try {
-                const { error } = await supabase.auth.signOut();
+                const { error } = await supabaseClient.auth.signOut();
                 if (error) throw error;
                 
                 appState.currentUser = null;
@@ -1406,7 +1412,7 @@
             
             try {
                 // Загружаем чаты пользователя
-                const { data: chats, error } = await supabase
+                const { data: chats, error } = await supabaseClient
                     .from('chats')
                     .select(`
                         id,
@@ -1511,7 +1517,7 @@
             
             try {
                 // Ищем пользователей по никнейму
-                const { data: users, error } = await supabase
+                const { data: users, error } = await supabaseClient
                     .from('profiles')
                     .select('id, nickname, avatar_url, created_at')
                     .ilike('nickname', `%${query}%`)
@@ -1559,7 +1565,7 @@
         async function startChat(userId) {
             try {
                 // Создаем или получаем существующий чат
-                const { data: chatId, error } = await supabase.rpc('create_or_get_chat', {
+                const { data: chatId, error } = await supabaseClient.rpc('create_or_get_chat', {
                     user1_id: appState.currentUser.id,
                     user2_id: userId
                 });
@@ -1595,7 +1601,7 @@
             // Загружаем информацию о пользователе
             if (!appState.users[userId]) {
                 try {
-                    const { data: user, error } = await supabase
+                    const { data: user, error } = await supabaseClient
                         .from('profiles')
                         .select('*')
                         .eq('id', userId)
@@ -1640,7 +1646,7 @@
             
             try {
                 // Загружаем сообщения
-                const { data: messages, error } = await supabase
+                const { data: messages, error } = await supabaseClient
                     .from('messages')
                     .select(`
                         *,
@@ -1653,7 +1659,7 @@
                 if (error) throw error;
                 
                 // Загружаем реакции
-                const { data: reactions, error: reactionsError } = await supabase
+                const { data: reactions, error: reactionsError } = await supabaseClient
                     .from('message_reactions')
                     .select('*')
                     .in('message_id', messages.map(m => m.id));
@@ -1737,7 +1743,7 @@
             if (!text || !appState.currentChat) return;
             
             try {
-                const { data, error } = await supabase
+                const { data, error } = await supabaseClient
                     .from('messages')
                     .insert({
                         chat_id: appState.currentChat.id,
@@ -1754,7 +1760,7 @@
                 autoResizeTextarea();
                 
                 // Обновляем время последнего сообщения в чате
-                await supabase
+                await supabaseClient
                     .from('chats')
                     .update({ updated_at: new Date().toISOString() })
                     .eq('id', appState.currentChat.id);
@@ -1771,7 +1777,7 @@
         async function toggleReaction(messageId, emoji) {
             try {
                 // Проверяем, есть ли уже реакция от пользователя
-                const { data: existingReaction, error: checkError } = await supabase
+                const { data: existingReaction, error: checkError } = await supabaseClient
                     .from('message_reactions')
                     .select('id')
                     .eq('message_id', messageId)
@@ -1785,7 +1791,7 @@
                 
                 if (existingReaction) {
                     // Удаляем реакцию
-                    const { error } = await supabase
+                    const { error } = await supabaseClient
                         .from('message_reactions')
                         .delete()
                         .eq('id', existingReaction.id);
@@ -1793,14 +1799,14 @@
                     if (error) throw error;
                 } else {
                     // Удаляем предыдущую реакцию пользователя на это сообщение
-                    await supabase
+                    await supabaseClient
                         .from('message_reactions')
                         .delete()
                         .eq('message_id', messageId)
                         .eq('user_id', appState.currentUser.id);
                     
                     // Добавляем новую реакцию
-                    const { error } = await supabase
+                    const { error } = await supabaseClient
                         .from('message_reactions')
                         .insert({
                             message_id: messageId,
@@ -1817,10 +1823,10 @@
         }
         
         function setupRealtimeSubscriptions() {
-            if (!supabase) return;
+            if (!supabaseClient) return;
             
             // Подписываемся на новые сообщения
-            const messagesChannel = supabase
+            const messagesChannel = supabaseClient
                 .channel('messages')
                 .on('postgres_changes', 
                     { 
@@ -1833,7 +1839,7 @@
                 .subscribe();
             
             // Подписываемся на реакции
-            const reactionsChannel = supabase
+            const reactionsChannel = supabaseClient
                 .channel('reactions')
                 .on('postgres_changes',
                     {
@@ -1847,13 +1853,13 @@
         }
         
         function subscribeToChat(chatId) {
-            if (!supabase) return;
+            if (!supabaseClient) return;
             
             // Удаляем старые подписки на этот чат
-            supabase.removeChannel('chat_' + chatId);
+            supabaseClient.removeChannel('chat_' + chatId);
             
             // Создаем новую подписку на этот чат
-            const chatChannel = supabase
+            const chatChannel = supabaseClient
                 .channel('chat_' + chatId)
                 .on('postgres_changes',
                     {
@@ -1891,7 +1897,7 @@
         
         async function loadFullMessage(messageId) {
             try {
-                const { data: message, error } = await supabase
+                const { data: message, error } = await supabaseClient
                     .from('messages')
                     .select(`
                         *,
@@ -1953,7 +1959,7 @@
                 const filePath = `${fileName}`;
                 
                 // Загружаем файл в хранилище
-                const { error: uploadError } = await supabase.storage
+                const { error: uploadError } = await supabaseClient.storage
                     .from('avatars')
                     .upload(filePath, file, {
                         upsert: true
@@ -1962,12 +1968,12 @@
                 if (uploadError) throw uploadError;
                 
                 // Получаем публичный URL
-                const { data: { publicUrl } } = supabase.storage
+                const { data: { publicUrl } } = supabaseClient.storage
                     .from('avatars')
                     .getPublicUrl(filePath);
                 
                 // Обновляем профиль
-                const { error: updateError } = await supabase
+                const { error: updateError } = await supabaseClient
                     .from('profiles')
                     .update({ avatar_url: publicUrl })
                     .eq('id', appState.currentUser.id);
@@ -2003,7 +2009,7 @@
             
             try {
                 // Проверяем уникальность никнейма
-                const { data: existingUser, error: checkError } = await supabase
+                const { data: existingUser, error: checkError } = await supabaseClient
                     .from('profiles')
                     .select('id')
                     .eq('nickname', nickname)
@@ -2021,7 +2027,7 @@
                 }
                 
                 // Обновляем никнейм
-                const { error: updateError } = await supabase
+                const { error: updateError } = await supabaseClient
                     .from('profiles')
                     .update({ nickname: nickname })
                     .eq('id', appState.currentUser.id);
@@ -2265,8 +2271,5 @@
         window.toggleReaction = toggleReaction;
         window.closeNotification = closeNotification;
     </script>
-    
-    <!-- Подключаем Supabase JS -->
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </body>
 </html>
