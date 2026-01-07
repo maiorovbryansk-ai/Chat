@@ -6,6 +6,7 @@
     <title>Supabase Messenger</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
+        /* Стили остаются без изменений, как в предыдущем коде */
         :root {
             --primary-color: #0088cc;
             --primary-dark: #006699;
@@ -812,8 +813,16 @@
     </div>
 
     <script>
+        // Загружаем Supabase из CDN перед выполнением основного кода
+        (function() {
+            const script = document.createElement('script');
+            script.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js';
+            script.onload = initApp;
+            document.head.appendChild(script);
+        })();
+
         // Глобальные переменные
-        let supabase = null;
+        let supabaseClient = null;
         let currentUser = null;
         let currentChatId = null;
         let currentChatUser = null;
@@ -821,8 +830,8 @@
         let notificationPermission = 'default';
         let isTabActive = true;
         
-        // Инициализация при загрузке страницы
-        document.addEventListener('DOMContentLoaded', async function() {
+        // Инициализация приложения после загрузки Supabase
+        async function initApp() {
             // Настройка обработчиков событий аутентификации
             setupAuthEventHandlers();
             
@@ -831,27 +840,38 @@
             const savedKey = localStorage.getItem('supabaseKey');
             
             if (savedUrl && savedKey) {
+                // Инициализировать Supabase
+                await initSupabase(savedUrl, savedKey);
                 // Показать форму входа
                 showAuthForm('login');
+                // Проверить активную сессию
+                await checkSession();
             } else {
                 // Показать форму настройки Supabase
                 showAuthForm('supabaseSetup');
             }
             
-            // Запросить разрешение на уведомления
-            requestNotificationPermission();
-            
             // Отслеживание активности вкладки
             document.addEventListener('visibilitychange', function() {
                 isTabActive = !document.hidden;
             });
-            
-            // Проверить, есть ли активная сессия
-            if (savedUrl && savedKey) {
-                await initSupabase(savedUrl, savedKey);
-                await checkSession();
+        }
+        
+        // Инициализация Supabase клиента
+        async function initSupabase(url, key) {
+            try {
+                if (!window.supabase) {
+                    throw new Error('Supabase не загрузился. Проверьте подключение к интернету.');
+                }
+                supabaseClient = window.supabase.createClient(url, key);
+                console.log('Supabase инициализирован');
+                return true;
+            } catch (error) {
+                console.error('Ошибка инициализации Supabase:', error);
+                showError('supabaseError', 'Ошибка подключения к Supabase: ' + error.message);
+                return false;
             }
-        });
+        }
         
         // Настройка обработчиков событий аутентификации
         function setupAuthEventHandlers() {
@@ -922,6 +942,15 @@
                 // Переключить на вкладку приложения
                 window.focus();
             });
+            
+            // Кнопка для запроса разрешения на уведомления (только по действию пользователя)
+            document.addEventListener('click', function(e) {
+                // Если пользователь кликнул на кнопку отправки сообщения или другие действия,
+                // можно запросить разрешение
+                if (e.target.id === 'sendBtn' || e.target.closest('.send-btn')) {
+                    requestNotificationPermission();
+                }
+            });
         }
         
         // Показать нужную форму аутентификации
@@ -956,39 +985,18 @@
             });
         }
         
-        // Инициализация Supabase клиента
-        async function initSupabase(url, key) {
-            // Загружаем Supabase из CDN
-            if (typeof supabaseClient === 'undefined') {
-                const script = document.createElement('script');
-                script.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js';
-                script.onload = function() {
-                    supabase = window.supabase.createClient(url, key);
-                };
-                document.head.appendChild(script);
-            } else {
-                supabase = window.supabase.createClient(url, key);
-            }
-            
-            // Ждем загрузки библиотеки
-            await new Promise(resolve => {
-                const checkLib = setInterval(() => {
-                    if (window.supabase) {
-                        clearInterval(checkLib);
-                        supabase = window.supabase.createClient(url, key);
-                        resolve();
-                    }
-                }, 100);
-            });
-        }
-        
         // Сохранение настроек Supabase
         async function handleSaveSupabase() {
             const url = document.getElementById('supabaseUrl').value.trim();
             const key = document.getElementById('supabaseKey').value.trim();
             
-            if (!url || !key) {
-                showError('supabaseError', 'Пожалуйста, заполните все поля');
+            if (!url) {
+                showError('supabaseError', 'Введите Supabase URL');
+                return;
+            }
+            
+            if (!key) {
+                showError('supabaseError', 'Введите Supabase Anon Key');
                 return;
             }
             
@@ -997,11 +1005,15 @@
             localStorage.setItem('supabaseKey', key);
             
             // Инициализируем Supabase
-            await initSupabase(url, key);
+            const success = await initSupabase(url, key);
+            
+            if (!success) {
+                return;
+            }
             
             // Проверяем подключение
             try {
-                const { data, error } = await supabase.auth.getSession();
+                const { data, error } = await supabaseClient.auth.getSession();
                 
                 if (error) {
                     showError('supabaseError', 'Ошибка подключения к Supabase. Проверьте URL и ключ.');
@@ -1019,10 +1031,10 @@
         
         // Проверка активной сессии
         async function checkSession() {
-            if (!supabase) return;
+            if (!supabaseClient) return;
             
             try {
-                const { data, error } = await supabase.auth.getSession();
+                const { data, error } = await supabaseClient.auth.getSession();
                 
                 if (error) {
                     console.error('Ошибка проверки сессии:', error);
@@ -1032,8 +1044,10 @@
                 if (data.session) {
                     // Пользователь уже авторизован
                     currentUser = data.session.user;
-                    await loadUserProfile();
-                    showApp();
+                    const profileLoaded = await loadUserProfile();
+                    if (profileLoaded) {
+                        showApp();
+                    }
                 }
             } catch (err) {
                 console.error('Ошибка при проверке сессии:', err);
@@ -1063,7 +1077,7 @@
             loginBtn.disabled = true;
             
             try {
-                const { data, error } = await supabase.auth.signInWithPassword({
+                const { data, error } = await supabaseClient.auth.signInWithPassword({
                     email,
                     password
                 });
@@ -1074,8 +1088,10 @@
                 }
                 
                 currentUser = data.user;
-                await loadUserProfile();
-                showApp();
+                const profileLoaded = await loadUserProfile();
+                if (profileLoaded) {
+                    showApp();
+                }
                 
             } catch (err) {
                 showError('loginError', 'Произошла ошибка при входе');
@@ -1114,7 +1130,7 @@
             registerBtn.disabled = true;
             
             try {
-                const { data, error } = await supabase.auth.signUp({
+                const { data, error } = await supabaseClient.auth.signUp({
                     email,
                     password
                 });
@@ -1140,10 +1156,10 @@
         
         // Загрузка профиля пользователя
         async function loadUserProfile() {
-            if (!currentUser) return;
+            if (!currentUser) return false;
             
             try {
-                const { data, error } = await supabase
+                const { data, error } = await supabaseClient
                     .from('profiles')
                     .select('nickname')
                     .eq('id', currentUser.id)
@@ -1161,6 +1177,7 @@
                 
             } catch (err) {
                 console.error('Ошибка загрузки профиля:', err);
+                showAuthForm('profileSetup');
                 return false;
             }
         }
@@ -1185,22 +1202,6 @@
                 return;
             }
             
-            // Проверка уникальности никнейма
-            try {
-                const { data, error } = await supabase
-                    .from('profiles')
-                    .select('id')
-                    .eq('nickname', nickname)
-                    .single();
-                
-                if (data) {
-                    showError('nicknameError', 'Этот никнейм уже занят');
-                    return;
-                }
-            } catch (err) {
-                // Ошибка "не найдено" - это нормально, значит никнейм свободен
-            }
-            
             // Показать индикатор загрузки
             const saveBtn = document.getElementById('saveProfileBtn');
             const originalText = saveBtn.textContent;
@@ -1209,7 +1210,7 @@
             
             try {
                 // Создаем профиль
-                const { error } = await supabase
+                const { error } = await supabaseClient
                     .from('profiles')
                     .insert([
                         {
@@ -1224,7 +1225,7 @@
                     if (error.code === '23505') { // Ошибка уникальности
                         showError('nicknameError', 'Этот никнейм уже занят');
                     } else {
-                        showError('nicknameError', 'Ошибка сохранения профиля');
+                        showError('nicknameError', 'Ошибка сохранения профиля: ' + error.message);
                     }
                     return;
                 }
@@ -1234,7 +1235,7 @@
                 showApp();
                 
             } catch (err) {
-                showError('nicknameError', 'Произошла ошибка');
+                showError('nicknameError', 'Произошла ошибка: ' + err.message);
             } finally {
                 // Восстановить кнопку
                 saveBtn.textContent = originalText;
@@ -1253,19 +1254,14 @@
             
             // Подписаться на обновления в реальном времени
             setupRealtimeSubscriptions();
-            
-            // Запросить разрешение на уведомления
-            if (notificationPermission === 'default') {
-                requestNotificationPermission();
-            }
         }
         
         // Загрузка списка чатов
         async function loadChats() {
-            if (!currentUser) return;
+            if (!currentUser || !supabaseClient) return;
             
             try {
-                const { data, error } = await supabase
+                const { data, error } = await supabaseClient
                     .from('chats')
                     .select(`
                         id,
@@ -1307,7 +1303,7 @@
                     if (!otherMember) continue;
                     
                     // Получить последнее сообщение
-                    const { data: lastMessage } = await supabase
+                    const { data: lastMessage } = await supabaseClient
                         .from('messages')
                         .select('text, created_at')
                         .eq('chat_id', chat.id)
@@ -1332,10 +1328,10 @@
                     chatItem.innerHTML = `
                         <div class="chat-info">
                             <div class="chat-header">
-                                <div class="chat-name">${otherMember.user.nickname}</div>
+                                <div class="chat-name">${escapeHtml(otherMember.user.nickname)}</div>
                                 <div class="chat-time">${lastMessageTime}</div>
                             </div>
-                            <div class="chat-last-message">${lastMessageText}</div>
+                            <div class="chat-last-message">${escapeHtml(lastMessageText)}</div>
                         </div>
                     `;
                     
@@ -1365,7 +1361,7 @@
             }
             
             try {
-                const { data, error } = await supabase
+                const { data, error } = await supabaseClient
                     .from('profiles')
                     .select('id, nickname')
                     .ilike('nickname', `${searchTerm}%`)
@@ -1387,9 +1383,9 @@
                         userItem.className = 'user-item';
                         userItem.innerHTML = `
                             <div>
-                                <div class="user-nickname">${user.nickname}</div>
+                                <div class="user-nickname">${escapeHtml(user.nickname)}</div>
                             </div>
-                            <button class="start-chat-btn" data-user-id="${user.id}" data-user-nickname="${user.nickname}">
+                            <button class="start-chat-btn" data-user-id="${user.id}" data-user-nickname="${escapeHtml(user.nickname)}">
                                 Написать
                             </button>
                         `;
@@ -1422,12 +1418,12 @@
             
             // Проверить, существует ли уже чат с этим пользователем
             try {
-                const { data: existingChats, error } = await supabase
+                const { data: existingChats, error } = await supabaseClient
                     .from('chat_members')
                     .select('chat_id')
                     .eq('user_id', currentUser.id)
                     .in('chat_id', 
-                        supabase
+                        supabaseClient
                             .from('chat_members')
                             .select('chat_id')
                             .eq('user_id', userId)
@@ -1444,7 +1440,7 @@
                 }
                 
                 // Создать новый чат
-                const { data: newChat, error: chatError } = await supabase
+                const { data: newChat, error: chatError } = await supabaseClient
                     .from('chats')
                     .insert([{ created_at: new Date().toISOString() }])
                     .select()
@@ -1458,7 +1454,7 @@
                 // Добавить участников в чат
                 const chatId = newChat.id;
                 
-                await supabase
+                await supabaseClient
                     .from('chat_members')
                     .insert([
                         { chat_id: chatId, user_id: currentUser.id },
@@ -1502,10 +1498,10 @@
         
         // Загрузка сообщений чата
         async function loadMessages(chatId) {
-            if (!chatId) return;
+            if (!chatId || !supabaseClient) return;
             
             try {
-                const { data, error } = await supabase
+                const { data, error } = await supabaseClient
                     .from('messages')
                     .select(`
                         *,
@@ -1598,7 +1594,7 @@
             }
             
             messageDiv.innerHTML = `
-                ${!isOwnMessage ? `<div class="message-sender">${message.sender.nickname}</div>` : ''}
+                ${!isOwnMessage ? `<div class="message-sender">${escapeHtml(message.sender.nickname)}</div>` : ''}
                 <div class="message-text">${escapeHtml(message.text)}</div>
                 <div class="message-time">${time}</div>
                 ${reactionsHtml}
@@ -1621,7 +1617,7 @@
             const input = document.getElementById('messageInput');
             const text = input.value.trim();
             
-            if (!text || !currentChatId) return;
+            if (!text || !currentChatId || !supabaseClient) return;
             
             // Очистить поле ввода
             input.value = '';
@@ -1629,7 +1625,7 @@
             document.getElementById('sendBtn').disabled = true;
             
             try {
-                const { error } = await supabase
+                const { error } = await supabaseClient
                     .from('messages')
                     .insert([
                         {
@@ -1660,11 +1656,11 @@
         
         // Переключение реакции
         async function toggleReaction(messageId, emoji) {
-            if (!messageId || !emoji) return;
+            if (!messageId || !emoji || !supabaseClient) return;
             
             try {
                 // Проверить, есть ли уже реакция от пользователя на это сообщение
-                const { data: existingReaction } = await supabase
+                const { data: existingReaction } = await supabaseClient
                     .from('message_reactions')
                     .select('id')
                     .eq('message_id', messageId)
@@ -1674,20 +1670,20 @@
                 
                 if (existingReaction) {
                     // Удалить реакцию
-                    await supabase
+                    await supabaseClient
                         .from('message_reactions')
                         .delete()
                         .eq('id', existingReaction.id);
                 } else {
                     // Удалить другие реакции пользователя на это сообщение
-                    await supabase
+                    await supabaseClient
                         .from('message_reactions')
                         .delete()
                         .eq('message_id', messageId)
                         .eq('user_id', currentUser.id);
                     
                     // Добавить новую реакцию
-                    await supabase
+                    await supabaseClient
                         .from('message_reactions')
                         .insert([
                             {
@@ -1706,67 +1702,46 @@
         
         // Настройка подписок на обновления в реальном времени
         function setupRealtimeSubscriptions() {
-            if (!supabase || !currentUser) return;
+            if (!supabaseClient || !currentUser) return;
             
             // Отписаться от предыдущих подписок
             if (realtimeSubscription) {
-                supabase.removeChannel(realtimeSubscription);
+                supabaseClient.removeChannel(realtimeSubscription);
             }
             
-            // Подписаться на новые сообщения в чатах пользователя
-            realtimeSubscription = supabase
-                .channel('messages')
+            // Подписаться на новые сообщения
+            realtimeSubscription = supabaseClient
+                .channel('messages-channel')
                 .on(
                     'postgres_changes',
                     {
                         event: 'INSERT',
                         schema: 'public',
                         table: 'messages',
-                        filter: `chat_id=in.(${getUserChatsFilter()})`
+                        filter: `chat_id=eq.${currentChatId}`
                     },
                     async (payload) => {
                         // Обработать новое сообщение
-                        handleNewMessage(payload.new);
+                        await handleNewMessage(payload.new);
                     }
                 )
                 .on(
                     'postgres_changes',
                     {
-                        event: 'INSERT',
+                        event: '*',
                         schema: 'public',
                         table: 'message_reactions'
                     },
                     async (payload) => {
-                        // Обработать новую реакцию
-                        handleNewReaction(payload.new);
+                        // Обработать изменения реакций
+                        await handleReactionChange(payload);
                     }
                 )
-                .on(
-                    'postgres_changes',
-                    {
-                        event: 'DELETE',
-                        schema: 'public',
-                        table: 'message_reactions'
-                    },
-                    async (payload) => {
-                        // Обработать удаление реакции
-                        handleDeletedReaction(payload.old);
+                .subscribe((status) => {
+                    if (status === 'SUBSCRIBED') {
+                        console.log('Подписан на обновления в реальном времени');
                     }
-                )
-                .subscribe();
-        }
-        
-        // Получить фильтр для чатов пользователя
-        async function getUserChatsFilter() {
-            // Получить все чаты пользователя
-            const { data } = await supabase
-                .from('chat_members')
-                .select('chat_id')
-                .eq('user_id', currentUser.id);
-            
-            if (!data || data.length === 0) return 'null';
-            
-            return data.map(item => item.chat_id).join(',');
+                });
         }
         
         // Обработка нового сообщения
@@ -1774,7 +1749,7 @@
             // Если это текущий открытый чат, добавить сообщение
             if (currentChatId === message.chat_id) {
                 // Получить данные отправителя
-                const { data: sender } = await supabase
+                const { data: sender } = await supabaseClient
                     .from('profiles')
                     .select('nickname')
                     .eq('id', message.sender_id)
@@ -1799,22 +1774,10 @@
             }
         }
         
-        // Обработка новой реакции
-        async function handleNewReaction(reaction) {
-            // Найти сообщение в текущем чате
-            const messageElement = document.querySelector(`[data-message-id="${reaction.message_id}"]`);
-            if (messageElement) {
-                // Перезагрузить сообщения чата
-                await loadMessages(currentChatId);
-            }
-        }
-        
-        // Обработка удаления реакции
-        async function handleDeletedReaction(reaction) {
-            // Найти сообщение в текущем чате
-            const messageElement = document.querySelector(`[data-message-id="${reaction.message_id}"]`);
-            if (messageElement) {
-                // Перезагрузить сообщения чата
+        // Обработка изменения реакций
+        async function handleReactionChange(payload) {
+            // Если у нас открыт чат, перезагрузить сообщения
+            if (currentChatId) {
                 await loadMessages(currentChatId);
             }
         }
@@ -1824,7 +1787,7 @@
             if (notificationPermission !== 'granted') return;
             
             // Получить данные отправителя
-            const { data: sender } = await supabase
+            const { data: sender } = await supabaseClient
                 .from('profiles')
                 .select('nickname')
                 .eq('id', message.sender_id)
@@ -1833,26 +1796,18 @@
             if (!sender) return;
             
             // Показать браузерное уведомление
-            const notification = new Notification('SupaChat', {
-                body: `${sender.nickname}: ${message.text.substring(0, 100)}`,
-                icon: 'https://supabase.com/favicon/favicon-32x32.png',
-                tag: message.chat_id
-            });
-            
-            notification.onclick = function() {
-                window.focus();
-                // Открыть соответствующий чат
-                if (currentChatId !== message.chat_id) {
-                    // Найти чат с этим пользователем
-                    const chatItem = document.querySelector(`[data-chat-id="${message.chat_id}"]`);
-                    if (chatItem) {
-                        const userId = chatItem.dataset.userId;
-                        const userNickname = chatItem.dataset.userNickname;
-                        openChat(message.chat_id, { id: userId, nickname: userNickname });
-                    }
-                }
-                this.close();
-            };
+            if ('Notification' in window && Notification.permission === 'granted') {
+                const notification = new Notification('SupaChat', {
+                    body: `${sender.nickname}: ${message.text.substring(0, 100)}`,
+                    icon: 'https://supabase.com/favicon/favicon-32x32.png',
+                    tag: message.chat_id
+                });
+                
+                notification.onclick = function() {
+                    window.focus();
+                    this.close();
+                };
+            }
             
             // Также показать внутреннее уведомление
             document.getElementById('notificationText').textContent = 
@@ -1865,24 +1820,32 @@
             }, 5000);
         }
         
-        // Запрос разрешения на уведомления
+        // Запрос разрешения на уведомления (только по действию пользователя)
         function requestNotificationPermission() {
             if (!('Notification' in window)) {
                 console.log('Браузер не поддерживает уведомления');
                 return;
             }
             
-            if (notificationPermission === 'default') {
+            // Запрашиваем разрешение только если еще не запрашивали
+            if (Notification.permission === 'default') {
+                // Этот вызов должен быть вызван в ответ на действие пользователя
+                // Например, при клике на кнопку отправки сообщения
                 Notification.requestPermission().then(permission => {
                     notificationPermission = permission;
+                    console.log('Разрешение на уведомления:', permission);
                 });
+            } else {
+                notificationPermission = Notification.permission;
             }
         }
         
         // Выход
         async function handleLogout() {
             try {
-                await supabase.auth.signOut();
+                if (supabaseClient) {
+                    await supabaseClient.auth.signOut();
+                }
                 currentUser = null;
                 currentChatId = null;
                 
@@ -1908,11 +1871,15 @@
         // Прокрутить вниз
         function scrollToBottom() {
             const messagesContainer = document.getElementById('messagesContainer');
-            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            if (messagesContainer) {
+                messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            }
         }
         
         // Форматирование времени
         function formatTime(isoString) {
+            if (!isoString) return '';
+            
             const date = new Date(isoString);
             const now = new Date();
             const diffMs = now - date;
@@ -1934,17 +1901,20 @@
         // Показать ошибку
         function showError(elementId, message) {
             const element = document.getElementById(elementId);
-            element.textContent = message;
-            element.classList.add('show');
-            
-            // Автоматически скрыть через 5 секунд
-            setTimeout(() => {
-                element.classList.remove('show');
-            }, 5000);
+            if (element) {
+                element.textContent = message;
+                element.classList.add('show');
+                
+                // Автоматически скрыть через 5 секунд
+                setTimeout(() => {
+                    element.classList.remove('show');
+                }, 5000);
+            }
         }
         
         // Экранирование HTML
         function escapeHtml(text) {
+            if (!text) return '';
             const div = document.createElement('div');
             div.textContent = text;
             return div.innerHTML;
