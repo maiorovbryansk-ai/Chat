@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Supabase Messenger</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💬</text></svg>">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         /* Сброс и базовые стили */
@@ -977,7 +978,7 @@
         let supabaseUrl = localStorage.getItem('supabaseUrl') || DEFAULT_SUPABASE_URL;
         let supabaseKey = localStorage.getItem('supabaseKey') || DEFAULT_SUPABASE_KEY;
         
-        let supabaseClient = null; // Изменили имя переменной
+        let supabaseClient = null;
         
         // Состояние приложения
         const appState = {
@@ -1077,18 +1078,47 @@
                     .eq('id', userId)
                     .single();
                 
-                if (error) throw error;
-                
-                appState.currentUser = {
-                    id: profile.id,
-                    email: profile.email,
-                    nickname: profile.nickname,
-                    avatar_url: profile.avatar_url
-                };
+                if (error) {
+                    // Если профиль не найден, создаем его
+                    if (error.code === 'PGRST116') {
+                        const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
+                        if (userError) throw userError;
+                        
+                        // Создаем профиль
+                        const { data: newProfile, error: insertError } = await supabaseClient
+                            .from('profiles')
+                            .insert({
+                                id: user.id,
+                                email: user.email,
+                                nickname: '@user_' + Math.random().toString(36).substring(2, 10)
+                            })
+                            .select()
+                            .single();
+                        
+                        if (insertError) throw insertError;
+                        
+                        appState.currentUser = {
+                            id: newProfile.id,
+                            email: newProfile.email,
+                            nickname: newProfile.nickname,
+                            avatar_url: newProfile.avatar_url
+                        };
+                    } else {
+                        throw error;
+                    }
+                } else {
+                    appState.currentUser = {
+                        id: profile.id,
+                        email: profile.email,
+                        nickname: profile.nickname,
+                        avatar_url: profile.avatar_url
+                    };
+                }
                 
                 updateProfileUI();
             } catch (error) {
                 console.error('Ошибка загрузки профиля:', error);
+                showNotification('Ошибка загрузки профиля: ' + error.message, 'error');
             }
         }
         
@@ -1190,11 +1220,6 @@
             if (!url.startsWith('https://') || !url.includes('.supabase.co')) {
                 showNotification('Неверный формат Supabase URL. Должен быть: https://your-project.supabase.co', 'error');
                 return;
-            }
-            
-            // Проверяем формат ключа (базовая проверка)
-            if (!key.startsWith('eyJ')) {
-                showNotification('Неверный формат ключа. Должен начинаться с eyJ', 'warning');
             }
             
             localStorage.setItem('supabaseUrl', url);
@@ -1418,8 +1443,7 @@
                         id,
                         created_at,
                         updated_at,
-                        chat_members!inner(user_id, profiles!inner(id, nickname, avatar_url)),
-                        messages!inner(id, text, created_at, sender_id)
+                        chat_members!inner(user_id, profiles!inner(id, nickname, avatar_url))
                     `)
                     .order('updated_at', { ascending: false });
                 
@@ -1429,6 +1453,39 @@
                 appState.chats = chats ? chats.filter(chat => 
                     chat.chat_members.some(member => member.user_id === appState.currentUser.id)
                 ) : [];
+                
+                // Получаем ID чатов
+                const chatIds = appState.chats.map(chat => chat.id);
+                
+                // Загружаем последние сообщения для этих чатов
+                let lastMessages = {};
+                if (chatIds.length > 0) {
+                    const { data: messages, error: messagesError } = await supabaseClient
+                        .from('messages')
+                        .select(`
+                            id,
+                            chat_id,
+                            text,
+                            created_at,
+                            sender_id
+                        `)
+                        .in('chat_id', chatIds)
+                        .order('created_at', { ascending: false });
+                    
+                    if (!messagesError && messages) {
+                        // Группируем по chat_id и берем первое (последнее) сообщение для каждого чата
+                        messages.forEach(msg => {
+                            if (!lastMessages[msg.chat_id]) {
+                                lastMessages[msg.chat_id] = msg;
+                            }
+                        });
+                    }
+                }
+                
+                // Присваиваем последнее сообщение каждому чату
+                appState.chats.forEach(chat => {
+                    chat.last_message = lastMessages[chat.id] || null;
+                });
                 
                 // Создаем кэш пользователей
                 appState.chats.forEach(chat => {
@@ -1444,7 +1501,7 @@
                 
             } catch (error) {
                 console.error('Ошибка загрузки чатов:', error);
-                showNotification('Ошибка загрузки чатов', 'error');
+                showNotification('Ошибка загрузки чатов: ' + error.message, 'error');
             } finally {
                 loadingElement.classList.add('hidden');
             }
@@ -1473,9 +1530,7 @@
                 if (!otherMember) return '';
                 
                 const user = appState.users[otherMember.user_id] || otherMember.profiles;
-                const lastMessage = chat.messages && chat.messages.length > 0 
-                    ? chat.messages[0] 
-                    : null;
+                const lastMessage = chat.last_message;
                 
                 // Форматируем время
                 const time = lastMessage ? formatTime(lastMessage.created_at) : '';
@@ -1487,7 +1542,7 @@
                         </div>
                         <div class="chat-info">
                             <div class="chat-name">${user.nickname || 'Пользователь'}</div>
-                            <div class="chat-last-message">${lastMessage ? lastMessage.text : 'Нет сообщений'}</div>
+                            <div class="chat-last-message">${lastMessage ? (lastMessage.text.length > 50 ? lastMessage.text.substring(0, 50) + '...' : lastMessage.text) : 'Нет сообщений'}</div>
                         </div>
                         <div class="chat-time">${time}</div>
                     </div>
@@ -1564,6 +1619,11 @@
         
         async function startChat(userId) {
             try {
+                // Проверяем, что userId является UUID
+                if (!isValidUUID(userId) || !isValidUUID(appState.currentUser.id)) {
+                    throw new Error('Неверный формат ID пользователя');
+                }
+                
                 // Создаем или получаем существующий чат
                 const { data: chatId, error } = await supabaseClient.rpc('create_or_get_chat', {
                     user1_id: appState.currentUser.id,
@@ -1582,8 +1642,13 @@
                 
             } catch (error) {
                 console.error('Ошибка создания чата:', error);
-                showNotification('Ошибка создания чата', 'error');
+                showNotification('Ошибка создания чата: ' + error.message, 'error');
             }
+        }
+        
+        function isValidUUID(uuid) {
+            const regex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+            return regex.test(uuid);
         }
         
         async function openChat(chatId, userId) {
@@ -1658,15 +1723,9 @@
                 
                 if (error) throw error;
                 
-                // Загружаем реакции
-                const { data: reactions, error: reactionsError } = await supabaseClient
-                    .from('message_reactions')
-                    .select('*')
-                    .in('message_id', messages.map(m => m.id));
-                
                 // Отображаем сообщения
                 messages.forEach(message => {
-                    renderMessage(message, reactions?.filter(r => r.message_id === message.id) || []);
+                    renderMessage(message, message.message_reactions || []);
                 });
                 
                 // Прокручиваем вниз
@@ -2104,7 +2163,7 @@
             
             const notification = new Notification('Новое сообщение', {
                 body: `${senderName}: ${message.text.substring(0, 100)}`,
-                icon: sender?.avatar_url || '/favicon.ico',
+                icon: sender?.avatar_url || 'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💬</text></svg>',
                 tag: 'message-' + message.id
             });
             
@@ -2128,7 +2187,7 @@
             if (Notification.permission === 'granted') {
                 const notification = new Notification('Тестовое уведомление', {
                     body: 'Это тестовое уведомление от Supabase Messenger',
-                    icon: appState.currentUser?.avatar_url || '/favicon.ico'
+                    icon: appState.currentUser?.avatar_url || 'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💬</text></svg>'
                 });
                 
                 notification.onclick = function() {
