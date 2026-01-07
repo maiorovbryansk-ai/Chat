@@ -688,6 +688,43 @@
         ::-webkit-scrollbar-thumb:hover {
             background: rgba(0, 0, 0, 0.3);
         }
+
+        /* Настройки */
+        .config-panel {
+            position: fixed;
+            top: 0;
+            right: -400px;
+            width: 350px;
+            height: 100vh;
+            background: white;
+            box-shadow: -2px 0 12px rgba(0,0,0,0.1);
+            padding: 20px;
+            transition: right 0.3s ease;
+            z-index: 1001;
+            overflow-y: auto;
+        }
+
+        .config-panel.open {
+            right: 0;
+        }
+
+        .config-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+        }
+
+        .config-overlay.active {
+            opacity: 1;
+            pointer-events: all;
+        }
     </style>
 </head>
 <body>
@@ -713,6 +750,9 @@
                     <span>Ошибка входа</span>
                 </div>
                 <button id="login-btn" class="btn btn-primary">Войти</button>
+                <button id="config-toggle" class="btn btn-text" style="margin-top: 10px;">
+                    <i class="fas fa-cog"></i> Настройки
+                </button>
             </div>
             
             <div id="register-form" class="auth-form hidden">
@@ -729,23 +769,60 @@
                     <span>Ошибка регистрации</span>
                 </div>
                 <button id="register-btn" class="btn btn-primary">Зарегистрироваться</button>
+                <button id="config-toggle-register" class="btn btn-text" style="margin-top: 10px;">
+                    <i class="fas fa-cog"></i> Настройки
+                </button>
             </div>
-            
-            <div class="setup-instructions" style="margin-top: 20px; padding: 15px; background-color: var(--bg-secondary); border-radius: var(--radius-sm); font-size: 14px;">
-                <p style="margin-bottom: 10px; font-weight: 600;">Настройка Supabase:</p>
-                <ol style="padding-left: 20px; margin-bottom: 10px;">
-                    <li>Создайте проект в <a href="https://supabase.com" target="_blank">Supabase</a></li>
-                    <li>Выполните SQL скрипт из schema.sql</li>
-                    <li>Вставьте URL и anon ключ ниже</li>
-                </ol>
-                <div class="form-group" style="margin-bottom: 10px;">
-                    <input type="text" id="supabase-url" class="input" placeholder="Supabase Project URL">
-                </div>
-                <div class="form-group">
-                    <input type="text" id="supabase-key" class="input" placeholder="Supabase anon key">
-                </div>
-                <button id="save-config-btn" class="btn btn-secondary" style="margin-top: 10px; width: 100%;">Сохранить настройки</button>
-            </div>
+        </div>
+    </div>
+    
+    <!-- Панель настроек -->
+    <div id="config-overlay" class="config-overlay"></div>
+    <div id="config-panel" class="config-panel">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h2>Настройки Supabase</h2>
+            <button id="close-config" class="btn btn-text">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        
+        <div style="margin-bottom: 20px; padding: 15px; background-color: var(--bg-secondary); border-radius: var(--radius-sm); font-size: 14px;">
+            <p style="margin-bottom: 10px; font-weight: 600;">Инструкция:</p>
+            <ol style="padding-left: 20px; margin-bottom: 10px;">
+                <li>Создайте проект в <a href="https://supabase.com" target="_blank">Supabase</a></li>
+                <li>Выполните SQL скрипт из schema.sql</li>
+                <li>Вставьте URL и anon ключ ниже</li>
+            </ol>
+        </div>
+        
+        <div class="form-group">
+            <label class="form-label" for="supabase-url">Supabase Project URL</label>
+            <input type="text" id="supabase-url" class="input" placeholder="https://your-project.supabase.co">
+        </div>
+        <div class="form-group">
+            <label class="form-label" for="supabase-key">Supabase anon key</label>
+            <input type="text" id="supabase-key" class="input" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...">
+        </div>
+        
+        <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border-color);">
+            <p style="font-size: 14px; color: var(--text-secondary); margin-bottom: 10px;">
+                После сохранения настроек приложение перезагрузится.
+            </p>
+            <button id="save-config-btn" class="btn btn-primary" style="width: 100%;">Сохранить и перезагрузить</button>
+            <button id="reset-config-btn" class="btn btn-secondary" style="width: 100%; margin-top: 10px;">Сбросить настройки</button>
+        </div>
+        
+        <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid var(--border-color);">
+            <h3 style="margin-bottom: 15px;">Тестовый проект</h3>
+            <p style="font-size: 14px; color: var(--text-secondary); margin-bottom: 15px;">
+                Для быстрого тестирования можно использовать демо-данные (только для ознакомления):
+            </p>
+            <button id="use-demo-config" class="btn btn-secondary" style="width: 100%;">
+                Использовать тестовые данные
+            </button>
+            <p style="font-size: 12px; color: var(--warning-color); margin-top: 10px;">
+                Внимание: тестовый проект может быть недоступен
+            </p>
         </div>
     </div>
     
@@ -760,6 +837,9 @@
                 <h1 class="header-title">Supabase Messenger</h1>
             </div>
             <div class="header-actions">
+                <button id="config-btn" class="btn btn-text" title="Настройки">
+                    <i class="fas fa-cog"></i>
+                </button>
                 <button id="profile-btn" class="btn btn-text" title="Профиль">
                     <i class="fas fa-user"></i>
                 </button>
@@ -878,11 +958,26 @@
     </div>
 
     <script>
-        // Конфигурация Supabase
-        let supabaseUrl = localStorage.getItem('supabaseUrl') || '';
-        let supabaseKey = localStorage.getItem('supabaseKey') || '';
+        // ============================================
+        // КОНФИГУРАЦИЯ SUPABASE (МОЖНО ИЗМЕНИТЬ)
+        // ============================================
+        
+        // ЗАМЕНИТЕ ЭТИ ЗНАЧЕНИЯ НА СВОИ ПРИ РАЗВЕРТЫВАНИИ
+        // Получите их в проекте Supabase: Settings → API
+        
+        const DEFAULT_SUPABASE_URL = 'https://geoojvchpycmsbdsmytu.supabase.co';  // Например: 'https://abcdefghijklmnop.supabase.co'
+        const DEFAULT_SUPABASE_KEY = 'sb_publishable_9wNJrGlNHzidAHktXChLXw_nUqvt9NN';  // Например: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
+        
+        // ============================================
+        // КОНЕЦ КОНФИГУРАЦИИ
+        // ============================================
+        
+        // Загрузка настроек из localStorage или использование значений по умолчанию
+        let supabaseUrl = localStorage.getItem('supabaseUrl') || DEFAULT_SUPABASE_URL;
+        let supabaseKey = localStorage.getItem('supabaseKey') || DEFAULT_SUPABASE_KEY;
+        
         let supabase = null;
-
+        
         // Состояние приложения
         const appState = {
             currentUser: null,
@@ -898,52 +993,54 @@
         document.addEventListener('DOMContentLoaded', initApp);
         
         async function initApp() {
-            // Загружаем сохраненные настройки
-            loadConfig();
-            
-            // Инициализируем Supabase если есть конфигурация
-            if (supabaseUrl && supabaseKey) {
-                initSupabase();
-            }
-            
             // Настройка обработчиков событий
             setupEventListeners();
             
             // Проверяем разрешение на уведомления
             checkNotificationPermission();
             
-            // Показываем экран авторизации если нет сессии
-            if (!supabase || !appState.currentUser) {
-                showAuthScreen();
+            // Загружаем конфигурацию в форму
+            loadConfigToForm();
+            
+            // Если есть конфигурация, инициализируем Supabase
+            if (supabaseUrl && supabaseKey) {
+                initSupabase();
+            } else {
+                // Если нет конфигурации, показываем настройки
+                showNotification('Настройте Supabase для начала работы', 'warning');
+                setTimeout(() => openConfigPanel(), 1000);
             }
         }
         
-        function loadConfig() {
-            const urlInput = document.getElementById('supabase-url');
-            const keyInput = document.getElementById('supabase-key');
-            
-            if (urlInput && keyInput) {
-                urlInput.value = supabaseUrl;
-                keyInput.value = supabaseKey;
-            }
+        function loadConfigToForm() {
+            document.getElementById('supabase-url').value = supabaseUrl;
+            document.getElementById('supabase-key').value = supabaseKey;
         }
         
         function initSupabase() {
-            // Инициализируем Supabase клиент
-            supabase = window.supabase.createClient(supabaseUrl, supabaseKey, {
-                auth: {
-                    persistSession: true,
-                    autoRefreshToken: true
-                },
-                realtime: {
-                    params: {
-                        eventsPerSecond: 10
+            try {
+                // Инициализируем Supabase клиент
+                supabase = window.supabase.createClient(supabaseUrl, supabaseKey, {
+                    auth: {
+                        persistSession: true,
+                        autoRefreshToken: true,
+                        detectSessionInUrl: true
+                    },
+                    realtime: {
+                        params: {
+                            eventsPerSecond: 10
+                        }
                     }
-                }
-            });
-            
-            // Проверяем текущую сессию
-            checkSession();
+                });
+                
+                // Проверяем текущую сессию
+                checkSession();
+                
+            } catch (error) {
+                console.error('Ошибка инициализации Supabase:', error);
+                showNotification('Ошибка инициализации Supabase. Проверьте настройки.', 'error');
+                openConfigPanel();
+            }
         }
         
         async function checkSession() {
@@ -961,7 +1058,8 @@
                 }
             } catch (error) {
                 console.error('Ошибка проверки сессии:', error);
-                showNotification('Ошибка проверки сессии', 'error');
+                showNotification('Ошибка проверки сессии. Проверьте настройки Supabase.', 'error');
+                showAuthScreen();
             }
         }
         
@@ -994,7 +1092,16 @@
             document.getElementById('register-tab').addEventListener('click', () => switchAuthTab('register'));
             document.getElementById('login-btn').addEventListener('click', login);
             document.getElementById('register-btn').addEventListener('click', register);
+            
+            // Настройки
+            document.getElementById('config-toggle').addEventListener('click', openConfigPanel);
+            document.getElementById('config-toggle-register').addEventListener('click', openConfigPanel);
+            document.getElementById('config-btn').addEventListener('click', openConfigPanel);
+            document.getElementById('close-config').addEventListener('click', closeConfigPanel);
+            document.getElementById('config-overlay').addEventListener('click', closeConfigPanel);
             document.getElementById('save-config-btn').addEventListener('click', saveConfig);
+            document.getElementById('reset-config-btn').addEventListener('click', resetConfig);
+            document.getElementById('use-demo-config').addEventListener('click', useDemoConfig);
             
             // Основное приложение
             document.getElementById('menu-btn').addEventListener('click', toggleMenu);
@@ -1035,8 +1142,14 @@
             // Обработка изменения видимости страницы для уведомлений
             document.addEventListener('visibilitychange', () => {
                 if (document.visibilityState === 'visible') {
-                    // Помечаем уведомления как прочитанные
                     markNotificationsAsRead();
+                }
+            });
+            
+            // Обработка Escape для закрытия панели настроек
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') {
+                    closeConfigPanel();
                 }
             });
         }
@@ -1048,6 +1161,16 @@
             document.getElementById('register-form').classList.toggle('hidden', tab !== 'register');
         }
         
+        function openConfigPanel() {
+            document.getElementById('config-panel').classList.add('open');
+            document.getElementById('config-overlay').classList.add('active');
+        }
+        
+        function closeConfigPanel() {
+            document.getElementById('config-panel').classList.remove('open');
+            document.getElementById('config-overlay').classList.remove('active');
+        }
+        
         function saveConfig() {
             const url = document.getElementById('supabase-url').value.trim();
             const key = document.getElementById('supabase-key').value.trim();
@@ -1057,14 +1180,50 @@
                 return;
             }
             
+            // Проверяем формат URL
+            if (!url.startsWith('https://') || !url.includes('.supabase.co')) {
+                showNotification('Неверный формат Supabase URL. Должен быть: https://your-project.supabase.co', 'error');
+                return;
+            }
+            
+            // Проверяем формат ключа (базовая проверка)
+            if (!key.startsWith('eyJ')) {
+                showNotification('Неверный формат ключа. Должен начинаться с eyJ', 'warning');
+            }
+            
             localStorage.setItem('supabaseUrl', url);
             localStorage.setItem('supabaseKey', key);
             
             supabaseUrl = url;
             supabaseKey = key;
             
-            initSupabase();
-            showNotification('Настройки сохранены', 'success');
+            showNotification('Настройки сохранены. Приложение перезагрузится...', 'success');
+            
+            // Перезагружаем страницу для применения настроек
+            setTimeout(() => location.reload(), 1500);
+        }
+        
+        function resetConfig() {
+            if (confirm('Сбросить настройки Supabase к значениям по умолчанию?')) {
+                localStorage.removeItem('supabaseUrl');
+                localStorage.removeItem('supabaseKey');
+                localStorage.removeItem('supabase.auth.token');
+                
+                showNotification('Настройки сброшены. Приложение перезагрузится...', 'success');
+                setTimeout(() => location.reload(), 1500);
+            }
+        }
+        
+        function useDemoConfig() {
+            // Демо-конфигурация (замените на свою для тестирования)
+            const demoUrl = 'https://your-demo-project.supabase.co';
+            const demoKey = 'your-demo-anon-key';
+            
+            if (confirm('Использовать тестовую конфигурацию? Это только для демонстрации.')) {
+                document.getElementById('supabase-url').value = demoUrl;
+                document.getElementById('supabase-key').value = demoKey;
+                showNotification('Тестовые данные загружены. Нажмите "Сохранить"', 'info');
+            }
         }
         
         async function login() {
@@ -1077,6 +1236,13 @@
             if (!email || !password) {
                 errorElement.querySelector('span').textContent = 'Заполните все поля';
                 errorElement.classList.remove('hidden');
+                return;
+            }
+            
+            if (!supabase) {
+                errorElement.querySelector('span').textContent = 'Сначала настройте Supabase';
+                errorElement.classList.remove('hidden');
+                openConfigPanel();
                 return;
             }
             
@@ -1119,16 +1285,32 @@
                 return;
             }
             
+            if (!supabase) {
+                errorElement.querySelector('span').textContent = 'Сначала настройте Supabase';
+                errorElement.classList.remove('hidden');
+                openConfigPanel();
+                return;
+            }
+            
             try {
                 const { data, error } = await supabase.auth.signUp({
                     email,
-                    password
+                    password,
+                    options: {
+                        emailRedirectTo: window.location.origin
+                    }
                 });
                 
                 if (error) throw error;
                 
-                showNotification('Регистрация успешна! Проверьте email для подтверждения', 'success');
-                switchAuthTab('login');
+                if (data.user?.identities?.length === 0) {
+                    showNotification('Пользователь с таким email уже существует', 'warning');
+                    switchAuthTab('login');
+                } else {
+                    showNotification('Регистрация успешна! Проверьте email для подтверждения', 'success');
+                    switchAuthTab('login');
+                }
+                
                 document.getElementById('register-email').value = '';
                 document.getElementById('register-password').value = '';
                 
@@ -1190,7 +1372,6 @@
         }
         
         function toggleMenu() {
-            // На мобильных устройствах можно добавить боковое меню
             showProfile();
         }
         
@@ -1239,9 +1420,9 @@
                 if (error) throw error;
                 
                 // Фильтруем чаты где пользователь является участником
-                appState.chats = chats.filter(chat => 
+                appState.chats = chats ? chats.filter(chat => 
                     chat.chat_members.some(member => member.user_id === appState.currentUser.id)
-                );
+                ) : [];
                 
                 // Создаем кэш пользователей
                 appState.chats.forEach(chat => {
@@ -1341,7 +1522,7 @@
                 
                 searchResults.innerHTML = '';
                 
-                if (users.length === 0) {
+                if (!users || users.length === 0) {
                     searchResults.innerHTML = `
                         <div style="padding: 20px; text-align: center; color: var(--text-secondary);">
                             Пользователи не найдены
@@ -1645,8 +1826,7 @@
                     { 
                         event: 'INSERT', 
                         schema: 'public', 
-                        table: 'messages',
-                        filter: `chat_id=in.(${appState.chats.map(c => c.id).join(',')})`
+                        table: 'messages'
                     }, 
                     handleNewMessage
                 )
@@ -1954,7 +2134,6 @@
         
         function markNotificationsAsRead() {
             // Можно реализовать отметку уведомлений как прочитанных
-            // В реальном приложении здесь бы обновлялся статус в базе данных
         }
         
         function initEmojiPicker() {
