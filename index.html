@@ -54,6 +54,23 @@
   .small{font-size:13px}
   .notice{background:rgba(124,92,255,0.09);padding:8px;border-radius:8px;color:var(--accent);font-size:13px}
 </style>
+
+<!-- Надёжная загрузка Supabase UMD: сначала jsdelivr, при ошибке — unpkg -->
+<script>
+(function(){
+  function addScript(src){
+    const s = document.createElement('script');
+    s.src = src;
+    s.crossOrigin = 'anonymous';
+    s.async = false;
+    document.head.appendChild(s);
+    return s;
+  }
+  // try jsDelivr first, fallback to unpkg if it errors
+  const s = addScript('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2');
+  s.addEventListener('error', ()=> addScript('https://unpkg.com/@supabase/supabase-js@2'));
+})();
+</script>
 </head>
 <body>
 <div id="app" class="app">
@@ -103,9 +120,26 @@ const SUPABASE_URL = "https://vrwteuyqdthzchaomedz.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_Mg-4TC0gHrK5_VmljEiF5w_O26xyotC";
 /* -------------------------------------------------------------------- */
 
-import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
+/*
+  Вместо ESM-импорта используем UMD, загруженный выше.
+  Ждём, пока глобальный объект (window.supabase) станет доступен.
+*/
+async function initSupabaseClient(){
+  const timeout = 7000;
+  const start = Date.now();
+  while(!(window.supabase && (window.supabase.createClient || window.supabase.createClient === window.supabase.createClient))){
+    if (Date.now() - start > timeout) throw new Error('Не удалось загрузить Supabase SDK с CDN (jsdelivr/unpkg).');
+    await new Promise(r => setTimeout(r, 50));
+  }
+  // UMD предоставляет глобальную переменную `supabase` с методом createClient
+  const createClient = window.supabase.createClient || (window.supabase && window.supabase.createClient);
+  if (!createClient) throw new Error('Supabase SDK загружен, но createClient не найден.');
+  return createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+}
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const supabase = await initSupabaseClient();
+
+/* ---------------- rest of code (unchanged logic) ---------------- */
 
 const EMOJI_SET = ["👍","❤️","😂","😮","😢","😡"];
 
@@ -214,10 +248,8 @@ async function signup(){
   if(!email || !password){ alert("Заполни email и пароль"); return; }
   const { data, error } = await supabase.auth.signUp({ email, password });
   if (error) return alert(error.message);
-  // если возвращается user — можно установить ник сразу; иначе просим подтвердить email и войти
   if (data?.user){
     state.user = data.user;
-    // show nickname setup
     document.getElementById("nicknameSetup").style.display = "block";
     alert("Регистрация успешна. Пожалуйста, укажи уникальный ник (формат @nickname).");
   } else {
@@ -232,13 +264,8 @@ async function signin(){
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) return alert(error.message);
   state.user = data.user;
-  // load profile, if missing ask to set nickname
   const { data: profile, error: pErr } = await supabase.from("profiles").select("*").eq("id", state.user.id).single();
-  if (pErr && pErr.code !== "PGRST116") {
-    // PGRST116 = no rows? client lib codes vary; ignore generic
-  }
   if (!profile) {
-    // show nickname setup
     showAuth();
     document.getElementById("nicknameSetup").style.display = "block";
   } else {
@@ -251,7 +278,6 @@ async function saveNickname(){
   const v = document.getElementById("nickInput").value.trim();
   if(!v || !v.startsWith("@")) return alert("Ник должен начинаться с @");
   if(!state.user) return alert("Сначала войди");
-  // check uniqueness
   const { data: existing } = await supabase.from("profiles").select("id").ilike("nickname", v).limit(1);
   if (existing && existing.length>0) return alert("Ник уже занят");
   const { data, error } = await supabase.from("profiles").insert([{
@@ -288,7 +314,6 @@ async function searchUsers(q){
   const elWrap = $("#searchScreen");
   elWrap.innerHTML = "";
   elWrap.appendChild(el("div", {class:"small muted"}, [`Результаты поиска для ${q}`]));
-  // exact or startswith
   const { data, error } = await supabase.from("profiles").select("id,nickname,created_at").ilike("nickname", `${q}%`).limit(20);
   if (error) return alert(error.message);
   if (!data || data.length === 0){
@@ -306,7 +331,6 @@ async function searchUsers(q){
 }
 
 async function openChatWithUser(userProfile){
-  // call RPC to create or return existing private chat
   if(!state.user) return alert("Войди сначала");
   const creator = state.user.id;
   const other = userProfile.id;
@@ -315,7 +339,6 @@ async function openChatWithUser(userProfile){
     if (error) throw error;
     const chatId = data;
     await openChat(chatId);
-    // switch UI
     chatScreen.style.display = "block";
     searchScreen.style.display = "none";
   } catch(e){
@@ -326,35 +349,6 @@ async function openChatWithUser(userProfile){
 /* ---------------- Chats list & messages ---------------- */
 async function refreshChatsList(){
   if(!state.user) return;
-  // fetch chats where user is member, join to get other participant and last message
-  const sql = `
-    select c.id, c.created_at,
-      (select json_agg(p) from (
-         select id, nickname from profiles p
-         join chat_members cm on cm.member_id = p.id
-         where cm.chat_id = c.id and p.id <> '${state.user.id}'
-       ) as t) as other_profiles,
-      (select (select text from messages m2 where m2.chat_id = c.id order by created_at desc limit 1)) as last_message,
-      (select (select created_at from messages m2 where m2.chat_id = c.id order by created_at desc limit 1)) as last_at
-    from chats c
-    join chat_members cm on cm.chat_id = c.id
-    where cm.member_id = '${state.user.id}'
-    order by last_at desc nulls last, c.created_at desc
-    limit 100;
-  `;
-  // use RPC query? supabase.from().select supports embedding via SQL? Simpler: use postgrest filtered queries with joins
-  const { data, error } = await supabase
-    .from("chat_members")
-    .select(`
-      chat:chats!inner(id,created_at),
-      chat(messages:text,created_at),
-      chat:chats!inner(
-        chat_members!inner(member_id)
-      )
-    `)
-    .eq("member_id", state.user.id)
-    .limit(200);
-  // The above is complicated via PostgREST. Instead do two queries: fetch chats ids then fetch last message and other profile.
   const { data: chatRows, error: e2 } = await supabase
     .from("chat_members")
     .select("chat_id")
@@ -365,9 +359,7 @@ async function refreshChatsList(){
     chatsListContainer.innerHTML = '<div class="empty">Нет чатов. Найди людей через поиск.</div>';
     return;
   }
-  // fetch chat metadata
   const { data: chatsMeta } = await supabase.from("chats").select("id,created_at").in("id", ids);
-  // fetch last messages for these chats
   const { data: lastMsgs } = await supabase
     .from("messages")
     .select("id,chat_id,sender_id,text,created_at")
@@ -379,7 +371,6 @@ async function refreshChatsList(){
     if(!lastByChat[m.chat_id]) lastByChat[m.chat_id] = m;
     else if (new Date(m.created_at) > new Date(lastByChat[m.chat_id].created_at)) lastByChat[m.chat_id] = m;
   });
-  // fetch other participants
   const { data: members } = await supabase
     .from("chat_members")
     .select("chat_id,member_id,profiles(nickname)")
@@ -390,7 +381,6 @@ async function refreshChatsList(){
       mapOther[m.chat_id] = m.profiles;
     }
   });
-  // build state.chats
   state.chats = chatsMeta.map(c => ({
     id: c.id,
     created_at: c.created_at,
@@ -432,7 +422,6 @@ async function openChat(chatId){
   const messagesWrap = el("div", {class:"messages", style:"flex:1;min-height:0"});
   const win = el("div", {class:"messages-window", id:"messagesWindow"});
   messagesWrap.appendChild(win);
-  // composer
   const composer = el("div", {class:"composer"}, [
     el("input", {placeholder:"Написать сообщение...", id:"messageInput"}),
     el("button", {onClick:sendMessage}, ["Отправить"])
@@ -440,9 +429,7 @@ async function openChat(chatId){
   chatScreen.appendChild(messagesWrap);
   chatScreen.appendChild(composer);
 
-  // load messages
   await loadMessages(chatId);
-  // scroll to bottom
   setTimeout(()=> scrollToBottom(), 50);
 }
 
@@ -455,7 +442,6 @@ async function loadMessages(chatId){
     .limit(1000);
   if (error) return console.error(error);
   state.messages[chatId] = data || [];
-  // load reactions
   const { data: reacts } = await supabase.from("message_reactions").select("id,message_id,user_id,reaction");
   state.reactions = {};
   (reacts||[]).forEach(r=>{
@@ -500,11 +486,9 @@ async function toggleReaction(message, em){
   const existing = state.reactions[message.id]?.byUser || null;
   try {
     if (existing === em) {
-      // remove reaction
       const { error } = await supabase.from("message_reactions").delete().match({ message_id: message.id, user_id: state.user.id });
       if (error) throw error;
     } else {
-      // upsert reaction
       const { error } = await supabase.from("message_reactions").upsert({
         message_id: message.id,
         user_id: state.user.id,
@@ -530,55 +514,43 @@ async function sendMessage(){
   const { data, error } = await supabase.from("messages").insert([payload]);
   if (error) return alert(error.message);
   inp.value = "";
-  // message will come via realtime
 }
 
 /* ---------------- Realtime subscriptions ---------------- */
 function subscribeRealtime(){
-  // Unsubscribe old
   if (state.subMessages) state.subMessages.unsubscribe();
   if (state.subReactions) state.subReactions.unsubscribe();
-  // messages
+
   state.subMessages = supabase
     .channel('public:messages')
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, payload => {
       const m = payload.new;
-      // append
       state.messages[m.chat_id] = state.messages[m.chat_id] || [];
       state.messages[m.chat_id].push(m);
-      // update chat list last_message
       const chat = state.chats.find(c=>c.id===m.chat_id);
       if (chat){
         chat.last_message = m.text;
         chat.last_at = m.created_at;
-      } else {
-        // optionally add to chats list
       }
-      // show notification if tab hidden and message not from me
       if (document.hidden && m.sender_id !== state.user.id) {
         (async ()=> {
           const ok = await notifyPermission();
           if (ok) {
-            // fetch sender nickname
             const { data } = await supabase.from("profiles").select("nickname").eq("id", m.sender_id).single();
             const title = data?.nickname || "Новое сообщение";
             new Notification(title, { body: m.text });
           }
         })();
       }
-      // if active chat, re-render
       if (state.activeChatId === m.chat_id) renderMessages(m.chat_id);
       renderChatsList();
     })
     .subscribe();
 
-  // reactions (INSERT, UPDATE, DELETE)
   state.subReactions = supabase
     .channel('public:reactions')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'message_reactions' }, payload => {
-      const ev = payload.eventType;
       const r = payload.new || payload.old;
-      // rebuild reactions for affected message
       refreshReactionsForMessage(r.message_id);
     })
     .subscribe();
@@ -593,7 +565,6 @@ async function refreshReactionsForMessage(message_id){
     if (r.user_id === state.user.id) obj.byUser = r.reaction;
   });
   state.reactions[message_id] = obj;
-  // re-render messages if visible
   if (state.activeChatId) renderMessages(state.activeChatId);
 }
 
@@ -606,11 +577,9 @@ function scrollToBottom(){
 
 /* ---------------- Init: auth state & start ---------------- */
 (async function init(){
-  // auth state change
   const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
     if (session?.user){
       state.user = session.user;
-      // load profile
       supabase.from("profiles").select("*").eq("id", state.user.id).single()
         .then(res=>{
           if (res.data) {
@@ -627,7 +596,6 @@ function scrollToBottom(){
       showAuth();
     }
   });
-  // current session
   const { data: { user } } = await supabase.auth.getUser();
   if (user) {
     state.user = user;
@@ -637,13 +605,9 @@ function scrollToBottom(){
     showAuth();
   }
 
-  // show online status (basic)
   onlineStatus.textContent = navigator.onLine ? "online" : "offline";
   window.addEventListener("online", ()=>onlineStatus.textContent = "online");
   window.addEventListener("offline", ()=>onlineStatus.textContent = "offline");
-
-  // Request notifications permission early (optional)
-  //await notifyPermission();
 })();
 </script>
 </body>
