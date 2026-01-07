@@ -1183,65 +1183,94 @@
         }
         
         // Сохранение профиля (никнейма)
-        async function handleSaveProfile() {
-            const nickname = document.getElementById('nickname').value.trim();
-            
-            // Валидация
-            if (!nickname) {
-                showError('nicknameError', 'Введите никнейм');
-                return;
-            }
-            
-            if (!nickname.startsWith('@')) {
-                showError('nicknameError', 'Никнейм должен начинаться с @');
-                return;
-            }
-            
-            if (nickname.length < 3) {
-                showError('nicknameError', 'Никнейм должен содержать не менее 3 символов');
-                return;
-            }
-            
-            // Показать индикатор загрузки
-            const saveBtn = document.getElementById('saveProfileBtn');
-            const originalText = saveBtn.textContent;
-            saveBtn.innerHTML = '<div class="loader"></div>';
-            saveBtn.disabled = true;
-            
-            try {
-                // Создаем профиль
-                const { error } = await supabaseClient
-                    .from('profiles')
-                    .insert([
-                        {
-                            id: currentUser.id,
-                            email: currentUser.email,
-                            nickname: nickname,
-                            created_at: new Date().toISOString()
-                        }
-                    ]);
-                
-                if (error) {
-                    if (error.code === '23505') { // Ошибка уникальности
-                        showError('nicknameError', 'Этот никнейм уже занят');
-                    } else {
-                        showError('nicknameError', 'Ошибка сохранения профиля: ' + error.message);
-                    }
-                    return;
-                }
-                
-                // Успешно
-                document.getElementById('currentUserNickname').textContent = nickname;
-                showApp();
-                
-            } catch (err) {
-                showError('nicknameError', 'Произошла ошибка: ' + err.message);
-            } finally {
-                // Восстановить кнопку
-                saveBtn.textContent = originalText;
-                saveBtn.disabled = false;
-            }
+        // Сохранение профиля (никнейма)
+async function handleSaveProfile() {
+    const nickname = document.getElementById('nickname').value.trim();
+    
+    // Валидация
+    if (!nickname) {
+        showError('nicknameError', 'Введите никнейм');
+        return;
+    }
+    
+    if (!nickname.startsWith('@')) {
+        showError('nicknameError', 'Никнейм должен начинаться с @');
+        return;
+    }
+    
+    if (nickname.length < 3) {
+        showError('nicknameError', 'Никнейм должен содержать не менее 3 символов');
+        return;
+    }
+    
+    // Показать индикатор загрузки
+    const saveBtn = document.getElementById('saveProfileBtn');
+    const originalText = saveBtn.textContent;
+    saveBtn.innerHTML = '<div class="loader"></div>';
+    saveBtn.disabled = true;
+    
+    try {
+        // Сначала проверяем, есть ли уже профиль
+        const { data: existingProfile, error: checkError } = await supabaseClient
+            .from('profiles')
+            .select('id')
+            .eq('id', currentUser.id)
+            .single();
+        
+        if (checkError && checkError.code !== 'PGRST116') { // PGRST116 = no rows returned
+            console.error('Ошибка проверки профиля:', checkError);
         }
+        
+        let error;
+        
+        if (existingProfile) {
+            // Обновляем существующий профиль
+            const { error: updateError } = await supabaseClient
+                .from('profiles')
+                .update({
+                    nickname: nickname,
+                    email: currentUser.email
+                })
+                .eq('id', currentUser.id);
+            error = updateError;
+        } else {
+            // Создаем новый профиль
+            const { error: insertError } = await supabaseClient
+                .from('profiles')
+                .insert([
+                    {
+                        id: currentUser.id,
+                        email: currentUser.email,
+                        nickname: nickname,
+                        created_at: new Date().toISOString()
+                    }
+                ]);
+            error = insertError;
+        }
+        
+        if (error) {
+            if (error.code === '23505') { // Ошибка уникальности
+                showError('nicknameError', 'Этот никнейм уже занят');
+            } else {
+                showError('nicknameError', 'Ошибка сохранения профиля: ' + error.message);
+                console.error('Детали ошибки:', error);
+            }
+            return;
+        }
+        
+        // Успешно
+        document.getElementById('currentUserNickname').textContent = nickname;
+        showApp();
+        
+    } catch (err) {
+        showError('nicknameError', 'Произошла ошибка: ' + err.message);
+        console.error('Ошибка:', err);
+    } finally {
+        // Восстановить кнопку
+        saveBtn.textContent = originalText;
+        saveBtn.disabled = false;
+    }
+}
         
         // Показать основное приложение
         async function showApp() {
