@@ -1,489 +1,299 @@
 <!doctype html>
 <html lang="ru">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>PING — secure MVP messenger</title>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>PING</title>
+
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+
 <style>
-  :root{
-    --bg:#0b1020; --panel:#0f1724; --muted:#9aa4b2; --accent:#4f9cff;
-    --card:#111827; --radius:10px; color-scheme: dark;
-    font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
-  }
-  *{box-sizing:border-box}
-  html,body,#app{height:100%}
-  body{margin:0;background:linear-gradient(180deg,var(--bg),#051025); color:#e6eef8; -webkit-font-smoothing:antialiased}
-  #app{display:flex;gap:20px;padding:24px;align-items:stretch}
-  .column{background:var(--panel); border-radius:var(--radius); padding:12px; box-shadow: 0 6px 20px rgba(2,6,23,.6)}
-  .left{width:320px; display:flex; flex-direction:column; gap:12px}
-  .right{flex:1; display:flex; flex-direction:column; gap:12px; min-width:300px}
-  .header{display:flex;align-items:center;justify-content:space-between;padding:8px}
-  .btn{background:transparent;border:0;color:var(--accent);padding:8px;border-radius:8px;cursor:pointer}
-  .btn:disabled{opacity:.4;cursor:not-allowed}
-  .chat-list{overflow:auto; max-height:60vh}
-  .chat-row{padding:10px;border-radius:8px;display:flex;align-items:center;gap:10px;cursor:pointer}
-  .chat-row:hover{background:rgba(255,255,255,0.02)}
-  .chat-row.active{background:linear-gradient(90deg, rgba(79,156,255,0.12), rgba(79,156,255,0.04))}
-  .avatar{width:40px;height:40px;border-radius:10px;background:rgba(255,255,255,0.03);display:flex;align-items:center;justify-content:center;font-weight:600}
-  .title{font-size:14px}
-  .muted{color:var(--muted);font-size:12px}
-  .messages{background:linear-gradient(180deg,#071025 0%, #0b1530 100%); border-radius:8px; padding:12px; flex:1; overflow:auto}
-  .message{max-width:70%;padding:10px;border-radius:10px;margin-bottom:8px;word-break:break-word}
-  .message.me{margin-left:auto;background:linear-gradient(180deg,var(--accent),#2b6fd6); color:white}
-  .message.their{background:rgba(255,255,255,0.03); color:#cfe6ff}
-  .input-row{display:flex;gap:8px;align-items:flex-end;padding:6px}
-  textarea{flex:1;min-height:48px;max-height:160px;padding:10px;border-radius:8px;border:0;background:#061226;color:inherit;resize:none}
-  .small{font-size:12px}
-  /* modal */
-  .modal-backdrop{position:fixed;inset:0;background:rgba(3,6,11,.6);display:flex;align-items:center;justify-content:center}
-  .modal{width:420px;background:var(--card);border-radius:12px;padding:16px;box-shadow:0 10px 40px rgba(0,0,0,.6)}
-  .empty{padding:24px;text-align:center;color:var(--muted)}
-  .loading{opacity:.7}
-  @media(max-width:900px){#app{flex-direction:column;padding:12px}.left{width:100%}.right{width:100%}}
+:root{
+  --bg:#0b1020;
+  --panel:#0f1724;
+  --accent:#4f9cff;
+  --muted:#9aa4b2;
+  color-scheme:dark;
+  font-family:Inter,system-ui;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{
+  background:linear-gradient(180deg,#0b1020,#050b18);
+  color:#e6eef8;
+}
+#app{height:100%;display:flex}
+
+/* layout */
+.sidebar{
+  width:300px;
+  background:var(--panel);
+  padding:16px;
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+}
+.main{
+  flex:1;
+  display:flex;
+  flex-direction:column;
+}
+.header{
+  padding:12px 16px;
+  border-bottom:1px solid rgba(255,255,255,.05);
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+}
+.list{flex:1;overflow:auto}
+.chat{
+  padding:10px;
+  border-radius:8px;
+  cursor:pointer;
+}
+.chat.active{background:rgba(79,156,255,.15)}
+.chat:hover{background:rgba(255,255,255,.03)}
+.messages{
+  flex:1;
+  padding:16px;
+  overflow:auto;
+  background:linear-gradient(180deg,#071025,#0b1530);
+}
+.msg{
+  max-width:70%;
+  padding:10px;
+  border-radius:10px;
+  margin-bottom:8px;
+  word-break:break-word;
+}
+.me{margin-left:auto;background:var(--accent);color:#fff}
+.their{background:rgba(255,255,255,.05)}
+.composer{
+  display:flex;
+  padding:12px;
+  gap:8px;
+}
+textarea{
+  flex:1;
+  resize:none;
+  border:0;
+  border-radius:8px;
+  padding:10px;
+  background:#061226;
+  color:inherit;
+}
+button{
+  border:0;
+  border-radius:8px;
+  padding:10px 14px;
+  background:var(--accent);
+  color:white;
+  cursor:pointer;
+}
+button:disabled{opacity:.5;cursor:not-allowed}
+.muted{color:var(--muted);font-size:13px}
+.center{
+  height:100%;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+.card{
+  background:var(--panel);
+  padding:24px;
+  border-radius:12px;
+  width:100%;
+  max-width:420px;
+}
+.error{color:#ff7a7a;font-size:13px}
 </style>
 </head>
+
 <body>
-<div id="app">
-  <!-- LEFT -->
-  <div class="column left" id="leftColumn" aria-live="polite">
-    <div class="header">
-      <div style="display:flex;align-items:center;gap:8px">
-        <div style="font-weight:700">PING</div>
-        <div class="muted small">secure messenger</div>
-      </div>
-      <div>
-        <button id="newChatBtn" class="btn">+ Новый чат</button>
-        <button id="logoutBtn" class="btn">Выйти</button>
-      </div>
-    </div>
-    <div id="chatsContainer" class="chat-list">
-      <!-- chats rendered here -->
-    </div>
-    <div id="leftFooter" class="muted small" style="padding:6px"> © PING</div>
-  </div>
-
-  <!-- RIGHT -->
-  <div class="column right" id="rightColumn">
-    <div id="dialogHeader" class="header">
-      <div id="dialogTitle">Выберите чат</div>
-      <div id="dialogMeta" class="muted small"></div>
-    </div>
-
-    <div id="messagesArea" class="messages" aria-live="polite">
-      <div class="empty" id="emptyRight">Нет открытого чата</div>
-    </div>
-
-    <div id="composer" style="display:none;flex-direction:column;">
-      <div class="input-row">
-        <textarea id="messageInput" placeholder="Напиши сообщение..." rows="1"></textarea>
-        <button id="sendBtn" class="btn" disabled>Отправить</button>
-      </div>
-      <div class="muted small" style="padding-left:8px">Enter — отправить · Shift+Enter — новая строка</div>
-    </div>
-  </div>
-</div>
-
-<!-- Modal (hidden) -->
-<div id="modal" style="display:none"></div>
+<div id="app"></div>
 
 <script type="module">
-/* ========== CONFIG - ЗАМЕНИТЬ на свои значения ========== */
-const SUPABASE_URL = 'https://mhgbfyztvtqikpqufphm.supabase.co';
-const SUPABASE_ANON_KEY = 'sb_publishable_FC_9UNlytgDXFKkapVTNOQ_uGdRMXjT';
-/* ======================================================= */
+import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm'
 
-import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm';
+/* ===== CONFIG ===== */
+const SUPABASE_URL = 'https://YOUR_PROJECT.supabase.co'
+const SUPABASE_ANON_KEY = 'YOUR_ANON_KEY'
+/* ================= */
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { realtime: { params: { eventsPerSecond: 5 } } });
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+const app = document.getElementById('app')
 
-/* ========== Centralized state ========== */
 const state = {
-  user: null,
-  session: null,
-  activeChatId: null,
-  chats: [],
-  messages: {}, // map chatId -> array
-  realtimeSub: null
-};
-
-/* ========== Helpers ========== */
-function el(tag, cls){ const e=document.createElement(tag); if(cls) e.className=cls; return e; }
-function $(id){ return document.getElementById(id); }
-function setText(node, text){ node.textContent = text ?? ''; }
-function escapeText(s){ return String(s); } // we always use textContent, not innerHTML
-
-function formatTime(ts){
-  if(!ts) return '';
-  const d = new Date(ts);
-  return d.toLocaleString();
+  user:null,
+  chats:[],
+  activeChat:null,
+  messages:{},
+  sub:null
 }
 
-/* ========== UI elements ========= */
-const newChatBtn = $('newChatBtn');
-const logoutBtn = $('logoutBtn');
-const chatsContainer = $('chatsContainer');
-const dialogTitle = $('dialogTitle');
-const dialogMeta = $('dialogMeta');
-const messagesArea = $('messagesArea');
-const composer = $('composer');
-const messageInput = $('messageInput');
-const sendBtn = $('sendBtn');
-const modalRoot = $('modal');
-const leftColumn = $('leftColumn');
+/* ===== INIT ===== */
+init()
 
-newChatBtn.addEventListener('click', showNewChatModal);
-logoutBtn.addEventListener('click', logout);
+async function init(){
+  renderLoading()
 
-/* ========== AUTH flows ========== */
-async function init() {
-  showLoadingLeft();
-  const { data } = await supabase.auth.getSession();
-  state.session = data.session;
-  if (data.session && data.session.user) {
-    // Load minimal user profile from profiles table
-    state.user = { id: data.session.user.id, email: data.session.user.email || null };
-    await ensureProfile();
-    await loadChats();
-    restoreLastChat();
-  } else {
-    renderSignedOut();
-  }
-
-  // subscribe to auth changes
-  supabase.auth.onAuthStateChange((event, session) => {
-    state.session = session;
-    if(session && session.user){
-      state.user = { id: session.user.id, email: session.user.email || null };
-      ensureProfile().then(()=> loadChats());
-      renderSignedIn();
-    } else {
-      // logged out
-      clearState();
-      renderSignedOut();
-    }
-  });
-}
-
-async function ensureProfile(){
-  // ensure a profiles row exists for auth user (client can INSERT its own profile)
   try{
-    const { data, error } = await supabase.from('profiles').select('user_id,username,email').eq('user_id', state.user.id).limit(1).maybeSingle();
-    if(error) throw error;
-    if(!data){
-      // insert profile (email may be null until user sets it in Supabase auth)
-      await supabase.from('profiles').insert({ user_id: state.user.id, email: state.user.email || '' });
+    const { data, error } = await supabase.auth.getSession()
+    if(error) throw error
+
+    if(data.session){
+      state.user = data.session.user
+      await loadChats()
+      renderApp()
     } else {
-      // keep username if any
-      state.user.username = data.username || null;
-      state.user.email = data.email || state.user.email;
+      renderLogin()
     }
+
+    supabase.auth.onAuthStateChange((_e,s)=>{
+      if(!s){
+        state.user=null
+        renderLogin()
+      }
+    })
   }catch(e){
-    console.error('ensureProfile error', e);
+    renderFatal('Ошибка инициализации')
+    console.error(e)
   }
 }
 
-async function logout(){
-  await supabase.auth.signOut();
-  clearState();
-  renderSignedOut();
-}
-
-function clearState(){
-  state.user = null;
-  state.activeChatId = null;
-  state.chats = [];
-  state.messages = {};
-  if(state.realtimeSub){ try{ state.realtimeSub.unsubscribe(); } catch(e){} state.realtimeSub = null; }
-}
-
-/* ========== Render states ========== */
-function showLoadingLeft(){
-  chatsContainer.innerHTML = '<div class="loading muted small" style="padding:12px">Загрузка...</div>';
-}
-
-function renderSignedOut(){
-  // show minimal auth UI in center of left column
-  leftColumn.querySelector('#chatsContainer').innerHTML = '';
-  chatsContainer.innerHTML = '';
-  // replace right column with auth prompt
-  dialogTitle.textContent = 'Войдите в PING';
-  messagesArea.innerHTML = `
-    <div class="modal" style="max-width:420px;margin:auto">
-      <div style="font-weight:700;font-size:18px">Вход по email</div>
-      <div class="muted small" style="margin-top:8px">Мы пришлём ссылку для входа</div>
-      <div style="margin-top:12px">
-        <input id="loginEmail" type="email" placeholder="Email" style="width:100%;padding:10px;border-radius:8px;border:0;background:#061226;color:inherit" />
+/* ===== AUTH UI ===== */
+function renderLogin(msg=''){
+  app.innerHTML=`
+    <div class="center">
+      <div class="card">
+        <h2>PING</h2>
+        <p class="muted">Вход по email, пришлём magic link</p>
+        <input id="email" type="email" placeholder="email@example.com" style="width:100%;padding:10px;border-radius:8px;border:0;background:#061226;color:inherit"/>
+        <button id="login" style="width:100%;margin-top:12px">Войти</button>
+        ${msg?`<div class="error">${msg}</div>`:''}
       </div>
-      <div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end">
-        <button id="sendLinkBtn" class="btn">Отправить ссылку</button>
-      </div>
-      <div id="authMessage" class="muted small" style="margin-top:8px"></div>
+    </div>`
+  document.getElementById('login').onclick=sendLink
+}
+
+async function sendLink(){
+  const email=document.getElementById('email').value.trim()
+  if(!email) return renderLogin('Введите email')
+
+  const { error } = await supabase.auth.signInWithOtp({
+    email,
+    options:{ emailRedirectTo: window.location.origin }
+  })
+  if(error) renderLogin('Ошибка отправки')
+  else renderLogin('Проверь почту')
+}
+
+/* ===== APP ===== */
+function renderApp(){
+  app.innerHTML=`
+    <div class="sidebar">
+      <div><strong>PING</strong></div>
+      <div id="chats" class="list"></div>
+      <button id="logout">Выйти</button>
     </div>
-  `;
-  composer.style.display = 'none';
+    <div class="main">
+      <div class="header">
+        <div id="title">Выбери чат</div>
+      </div>
+      <div id="messages" class="messages"></div>
+      <div class="composer">
+        <textarea id="input" rows="1"></textarea>
+        <button id="send" disabled>Send</button>
+      </div>
+    </div>`
 
-  document.getElementById('sendLinkBtn').addEventListener('click', async () => {
-    const email = document.getElementById('loginEmail').value.trim();
-    if(!email) return;
-    const res = await supabase.auth.signInWithOtp({ email });
-    const m = $('authMessage');
-    if(res.error) { m.textContent = 'Ошибка отправки ссылки.'; }
-    else { m.textContent = 'Ссылка отправлена. Проверьте почту.'; }
-  });
-}
-
-function renderSignedIn(){
-  dialogTitle.textContent = 'Выберите чат';
-  messagesArea.innerHTML = '<div class="empty">Выберите или создайте чат</div>';
-  composer.style.display = 'none';
-}
-
-/* ========== Chats list ========== */
-async function loadChats(){
-  showLoadingLeft();
-  try {
-    const { data, error } = await supabase.rpc('rpc_get_user_chats');
-    if(error) throw error;
-    state.chats = data || [];
-    renderChats();
-  } catch (e) {
-    chatsContainer.innerHTML = `<div class="empty">Ошибка загрузки чатов</div>`;
-    console.error(e);
+  document.getElementById('logout').onclick=()=>supabase.auth.signOut()
+  document.getElementById('input').oninput=e=>{
+    document.getElementById('send').disabled=!e.target.value.trim()
   }
+  document.getElementById('send').onclick=sendMessage
+
+  renderChats()
+}
+
+/* ===== CHATS ===== */
+async function loadChats(){
+  const { data } = await supabase.rpc('rpc_get_user_chats')
+  state.chats=data||[]
 }
 
 function renderChats(){
-  chatsContainer.innerHTML = '';
-  if(!state.chats || state.chats.length === 0){
-    chatsContainer.innerHTML = `<div class="empty" style="padding:12px">У тебя пока нет чатов<br><button class="btn" id="startFirst">Начать новый чат</button></div>`;
-    const b = document.getElementById('startFirst');
-    if(b) b.addEventListener('click', showNewChatModal);
-    return;
-  }
-  for(const c of state.chats){
-    const row = el('div','chat-row');
-    row.dataset.chatId = c.chat_id;
-    row.addEventListener('click', ()=> openChat(c.chat_id));
-    if(state.activeChatId === c.chat_id) row.classList.add('active');
-
-    const avatar = el('div','avatar'); avatar.textContent = (c.partner_username && c.partner_username[0]?.toUpperCase()) || 'U';
-    const title = el('div'); title.className = 'title';
-    title.textContent = c.partner_username || 'Пользователь';
-    const meta = el('div','muted small'); meta.textContent = c.last_message_at ? formatTime(c.last_message_at) : '';
-    const sub = el('div','muted small'); sub.textContent = c.last_message ? c.last_message.slice(0,60) : 'Новый чат';
-
-    const left = el('div'); left.style.flex = '1';
-    left.appendChild(title); left.appendChild(sub);
-    row.appendChild(avatar); row.appendChild(left); row.appendChild(meta);
-    chatsContainer.appendChild(row);
-  }
+  const box=document.getElementById('chats')
+  box.innerHTML=''
+  state.chats.forEach(c=>{
+    const d=document.createElement('div')
+    d.className='chat'+(state.activeChat===c.chat_id?' active':'')
+    d.textContent=c.partner_username||'User'
+    d.onclick=()=>openChat(c.chat_id,c.partner_username)
+    box.appendChild(d)
+  })
 }
 
-/* ========== New Chat (modal) ========= */
-function showNewChatModal(){
-  modalRoot.innerHTML = `
-    <div class="modal-backdrop" id="modalBackdrop">
-      <div class="modal" role="dialog" aria-modal="true">
-        <div style="font-weight:700">Новый чат</div>
-        <div class="muted small" style="margin-top:8px">Введите точный email пользователя</div>
-        <div style="margin-top:12px"><input id="modalEmail" type="email" placeholder="email@example.com" style="width:100%;padding:8px;border-radius:8px;border:0;background:#061226;color:inherit"/></div>
-        <div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end">
-          <button id="cancelModal" class="btn">Отменить</button>
-          <button id="startChat" class="btn">Начать чат</button>
-        </div>
-        <div id="modalMessage" class="muted small" style="margin-top:8px"></div>
-      </div>
-    </div>`;
-  modalRoot.style.display = 'block';
-  document.getElementById('cancelModal').addEventListener('click', closeModal);
-  document.getElementById('modalBackdrop').addEventListener('click', (e)=> { if(e.target.id === 'modalBackdrop') closeModal(); });
-  document.getElementById('startChat').addEventListener('click', startChatByEmail);
+/* ===== MESSAGES ===== */
+async function openChat(id,title){
+  state.activeChat=id
+  document.getElementById('title').textContent=title||'Chat'
+  renderChats()
+
+  if(state.sub) state.sub.unsubscribe()
+
+  const { data } = await supabase
+    .from('messages')
+    .select('*')
+    .eq('chat_id',id)
+    .order('created_at',{ascending:true})
+    .limit(50)
+
+  state.messages[id]=data||[]
+  renderMessages()
+
+  state.sub = supabase.channel('chat-'+id)
+    .on('postgres_changes',{event:'INSERT',schema:'public',table:'messages',filter:`chat_id=eq.${id}`},p=>{
+      state.messages[id].push(p.new)
+      renderMessages()
+    })
+    .subscribe()
 }
 
-function closeModal(){ modalRoot.style.display = 'none'; modalRoot.innerHTML = ''; }
-
-async function startChatByEmail(){
-  const email = document.getElementById('modalEmail').value.trim();
-  const msg = $('modalMessage');
-  msg.textContent = '';
-  if(!email){ msg.textContent = 'Введите email'; return; }
-
-  // call RPC search
-  try{
-    const { data, error } = await supabase.rpc('rpc_search_user_by_email', { p_email: email });
-    if(error){
-      console.error(error); msg.textContent = 'Ошибка поиска.';
-      return;
-    }
-    if(!data){
-      msg.textContent = 'Пользователь не найден';
-      return;
-    }
-    // got user_id -> create or get chat
-    const otherUserId = data;
-    const { data: chatRes, error: chatErr } = await supabase.rpc('rpc_create_or_get_direct_chat', { p_other_user: otherUserId });
-    if(chatErr){ console.error(chatErr); msg.textContent = 'Не удалось создать чат'; return; }
-    const chatId = chatRes;
-    closeModal();
-    await loadChats(); // reload list
-    openChat(chatId);
-  }catch(e){
-    console.error(e); msg.textContent = 'Ошибка';
-  }
+function renderMessages(){
+  const box=document.getElementById('messages')
+  box.innerHTML=''
+  const arr=state.messages[state.activeChat]||[]
+  arr.forEach(m=>{
+    const d=document.createElement('div')
+    d.className='msg '+(m.sender_id===state.user.id?'me':'their')
+    d.textContent=m.content
+    box.appendChild(d)
+  })
+  box.scrollTop=box.scrollHeight
 }
-
-/* ========== Open chat, load messages, subscribe realtime ========== */
-async function openChat(chatId){
-  if(state.activeChatId === chatId) return;
-  // unsubscribe previous
-  if(state.realtimeSub){
-    try{ await state.realtimeSub.unsubscribe(); }catch(e){ console.warn(e); }
-    state.realtimeSub = null;
-  }
-  state.activeChatId = chatId;
-  // mark UI
-  Array.from(document.querySelectorAll('.chat-row')).forEach(r=> r.classList.toggle('active', r.dataset.chatId===chatId));
-  // load messages
-  messagesArea.innerHTML = '<div class="muted small">Загрузка...</div>';
-  composer.style.display = 'none';
-  try{
-    const { data, error } = await supabase
-      .from('messages')
-      .select('id, sender_id, content, created_at')
-      .eq('chat_id', chatId)
-      .order('created_at', { ascending: false })
-      .limit(50);
-    if(error) throw error;
-    const msgs = (data || []).reverse();
-    state.messages[chatId] = msgs;
-    renderMessages(chatId);
-    composer.style.display = 'flex';
-    // subscribe to realtime for this chat only
-    state.realtimeSub = supabase.channel(`public:messages:chat_id=eq.${chatId}`)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `chat_id=eq.${chatId}` }, (payload) => {
-        const m = payload.new;
-        // append if not duplicate
-        if(!state.messages[chatId]) state.messages[chatId] = [];
-        if(!state.messages[chatId].some(x=>x.id === m.id)){
-          state.messages[chatId].push(m);
-          appendMessageDom(m);
-        }
-      })
-      .subscribe((status) => {
-        if(status === 'SUBSCRIBED') console.log('realtime subscribed for', chatId);
-      });
-  }catch(e){
-    messagesArea.innerHTML = '<div class="empty">Не удалось загрузить сообщения</div>';
-    console.error(e);
-  }
-  // title: find partner name from state.chats
-  const chatMeta = state.chats.find(c => c.chat_id === chatId);
-  dialogTitle.textContent = chatMeta ? (chatMeta.partner_username || 'Пользователь') : 'Чат';
-  dialogMeta.textContent = chatMeta?.last_message_at ? formatTime(chatMeta.last_message_at) : '';
-}
-
-/* ========== Render messages ========= */
-function renderMessages(chatId){
-  messagesArea.innerHTML = '';
-  const msgs = state.messages[chatId] || [];
-  if(msgs.length === 0){
-    messagesArea.innerHTML = '<div class="empty">Нет сообщений. Напиши первое!</div>';
-    return;
-  }
-  for(const m of msgs){
-    appendMessageDom(m);
-  }
-  // scroll to bottom
-  messagesArea.scrollTop = messagesArea.scrollHeight;
-}
-
-function appendMessageDom(m){
-  const div = el('div','message');
-  div.classList.add(m.sender_id === state.user.id ? 'me' : 'their');
-  // timestamp
-  const content = el('div'); content.textContent = m.content;
-  const meta = el('div','muted small'); meta.textContent = formatTime(m.created_at);
-  div.appendChild(content);
-  div.appendChild(meta);
-  messagesArea.appendChild(div);
-  messagesArea.scrollTop = messagesArea.scrollHeight;
-}
-
-/* ========== Composer logic ========= */
-messageInput.addEventListener('input', () => {
-  sendBtn.disabled = messageInput.value.trim().length === 0;
-});
-
-messageInput.addEventListener('keydown', (e) => {
-  if(e.key === 'Enter' && !e.shiftKey){
-    e.preventDefault();
-    if(!sendBtn.disabled) sendMessage();
-  }
-});
-
-sendBtn.addEventListener('click', sendMessage);
 
 async function sendMessage(){
-  const content = messageInput.value.trim();
-  if(!content || !state.activeChatId) return;
-  // optimistic UI
-  const tempId = 'tmp-' + Date.now();
-  const tempMsg = { id: tempId, sender_id: state.user.id, content, created_at: new Date().toISOString(), pending: true };
-  if(!state.messages[state.activeChatId]) state.messages[state.activeChatId] = [];
-  state.messages[state.activeChatId].push(tempMsg);
-  appendMessageDom(tempMsg);
-  messageInput.value = ''; sendBtn.disabled = true;
+  const input=document.getElementById('input')
+  const text=input.value.trim()
+  if(!text) return
+  input.value=''
+  document.getElementById('send').disabled=true
 
-  try{
-    const { data, error } = await supabase.from('messages').insert({
-      chat_id: state.activeChatId,
-      sender_id: state.user.id,
-      content
-    }).select().single();
-
-    if(error) throw error;
-    // replace temp message
-    const arr = state.messages[state.activeChatId];
-    const idx = arr.findIndex(x => x.id === tempId);
-    if(idx >= 0){
-      arr[idx] = data;
-      // re-render messages area
-      renderMessages(state.activeChatId);
-    }
-    // reload chats list to update preview
-    loadChats();
-  }catch(e){
-    console.error('send error', e);
-    // mark as failed
-    const arr = state.messages[state.activeChatId];
-    const idx = arr.findIndex(x => x.id === tempId);
-    if(idx >= 0){
-      arr[idx].content = '[Не отправлено] ' + arr[idx].content;
-      renderMessages(state.activeChatId);
-    }
-  }
+  await supabase.from('messages').insert({
+    chat_id:state.activeChat,
+    sender_id:state.user.id,
+    content:text
+  })
 }
 
-/* ========== Restoration + multi-tab considerations ========= */
-function restoreLastChat(){
-  const last = localStorage.getItem('ping_last_chat');
-  if(last) openChat(last);
+/* ===== ERRORS ===== */
+function renderLoading(){
+  app.innerHTML='<div class="center"><div class="muted">Загрузка…</div></div>'
 }
-window.addEventListener('beforeunload', () => {
-  if(state.activeChatId) localStorage.setItem('ping_last_chat', state.activeChatId);
-});
-
-/* Multi-tab: listen for storage changes to session or activeChat */
-window.addEventListener('storage', (e) => {
-  if(e.key === 'ping_last_chat' && e.newValue !== state.activeChatId){
-    // another tab changed active chat — conservative approach: reload chats and if needed switch to new chat
-    loadChats();
-  }
-});
-
-/* ========== Init ========= */
-init();
+function renderFatal(msg){
+  app.innerHTML='<div class="center"><div class="error">'+msg+'</div></div>'
+}
 </script>
 </body>
 </html>
