@@ -775,12 +775,227 @@
     <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
     
     <script>
-        // ===================== CONFIGURATION =====================
-        const SUPABASE_URL = 'https://mfvgbozkoepmiyqijgjg.supabase.co';
-        const SUPABASE_ANON_KEY = 'sb_publishable_5qZGytaJZw5ig_osRnrMbw_lAwHp6Ia';
+ // ===================== CONFIGURATION =====================
+const SUPABASE_URL = 'https://mfvgbozkoepmiyqijgjg.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_5qZGytaJZw5ig_osRnrMbw_lAwHp6Ia';
+
+// ===================== STATE MANAGEMENT =====================
+let appState = {
+    user: null,
+    chats: [],
+    activeChatId: null,
+    messages: new Map(),
+    realtimeSubscription: null,
+    profilesCache: new Map()
+};
+
+// ===================== SUPABASE CLIENT =====================
+const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    auth: {
+        storage: window.localStorage,
+        autoRefreshToken: true,
+        persistSession: true,
+        detectSessionInUrl: true,
+        flowType: 'pkce'
+    }
+});
+
+// ===================== DOM ELEMENTS =====================
+const elements = {
+    authScreen: document.getElementById('authScreen'),
+    appContainer: document.getElementById('appContainer'),
+    googleLogin: document.getElementById('googleLogin'),
+    githubLogin: document.getElementById('githubLogin'),
+    logoutBtn: document.getElementById('logoutBtn'),
+    userAvatar: document.getElementById('userAvatar'),
+    chatsList: document.getElementById('chatsList'),
+    newChatBtn: document.getElementById('newChatBtn'),
+    chatHeader: document.getElementById('chatHeader'),
+    chatAvatar: document.getElementById('chatAvatar'),
+    chatTitle: document.getElementById('chatTitle'),
+    chatStatus: document.getElementById('chatStatus'),
+    messagesContainer: document.getElementById('messagesContainer'),
+    emptyChatState: document.getElementById('emptyChatState'),
+    messageInputContainer: document.querySelector('.message-input-container'),
+    messageForm: document.getElementById('messageForm'),
+    messageInput: document.getElementById('messageInput'),
+    sendBtn: document.getElementById('sendBtn'),
+    newChatModal: document.getElementById('newChatModal'),
+    closeModal: document.getElementById('closeModal'),
+    searchForm: document.getElementById('searchForm'),
+    searchEmail: document.getElementById('searchEmail'),
+    searchBtn: document.getElementById('searchBtn'),
+    userResult: document.getElementById('userResult'),
+    foundUserAvatar: document.getElementById('foundUserAvatar'),
+    foundUserName: document.getElementById('foundUserName'),
+    foundUserEmail: document.getElementById('foundUserEmail'),
+    startChatBtn: document.getElementById('startChatBtn'),
+    noResults: document.getElementById('noResults'),
+    modalLoading: document.getElementById('modalLoading'),
+    errorContainer: document.getElementById('errorContainer')
+};
+
+// ===================== INITIALIZATION =====================
+document.addEventListener('DOMContentLoaded', initApp);
+
+async function initApp() {
+    try {
+        console.log('Initializing app...');
         
-        // ===================== STATE MANAGEMENT =====================
-        let appState = {
+        // Сначала проверяем наличие OAuth hash в URL
+        const hash = window.location.hash;
+        if (hash && hash.includes('access_token')) {
+            console.log('Found OAuth hash in URL');
+            
+            // Обрабатываем OAuth callback
+            const { data: { session }, error } = await supabaseClient.auth.getSession();
+            
+            if (error) {
+                console.error('OAuth callback error:', error);
+                showError('Authentication failed');
+            } else if (session) {
+                console.log('OAuth successful, user:', session.user.email);
+                
+                // Очищаем URL от токенов
+                clearOAuthHash();
+                
+                // Восстанавливаем сессию
+                await handleUserSession(session.user);
+                return;
+            }
+        }
+        
+        // Если нет OAuth hash, проверяем существующую сессию
+        const { data: { session }, error } = await supabaseClient.auth.getSession();
+        
+        if (error) {
+            showError('Failed to restore session');
+            console.error('Session error:', error);
+            return;
+        }
+        
+        if (session) {
+            console.log('Restoring existing session for:', session.user.email);
+            await handleUserSession(session.user);
+        } else {
+            console.log('No session found, showing auth screen');
+            showAuthScreen();
+        }
+        
+        // Слушаем изменения аутентификации
+        supabaseClient.auth.onAuthStateChange(async (event, session) => {
+            console.log('Auth state changed:', event);
+            
+            if (event === 'SIGNED_IN' && session) {
+                clearOAuthHash();
+                await handleUserSession(session.user);
+            } else if (event === 'SIGNED_OUT') {
+                await handleSignOut();
+            } else if (event === 'TOKEN_REFRESHED') {
+                console.log('Token refreshed');
+            }
+        });
+        
+        setupEventListeners();
+        
+    } catch (error) {
+        console.error('Initialization error:', error);
+        showError('Failed to initialize application');
+    }
+}
+
+function clearOAuthHash() {
+    // Очищаем URL от OAuth параметров
+    if (window.location.hash && window.location.hash.includes('access_token')) {
+        window.history.replaceState(null, null, window.location.pathname + window.location.search);
+        console.log('Cleared OAuth hash from URL');
+    }
+}
+
+// ===================== AUTHENTICATION =====================
+async function signInWithProvider(provider) {
+    try {
+        console.log(`Signing in with ${provider}...`);
+        
+        const { data, error } = await supabaseClient.auth.signInWithOAuth({
+            provider: provider,
+            options: {
+                redirectTo: window.location.origin,
+                queryParams: {
+                    access_type: 'offline',
+                    prompt: 'consent'
+                }
+            }
+        });
+        
+        if (error) throw error;
+    } catch (error) {
+        console.error(`${provider} sign in error:`, error);
+        showError(`Failed to sign in with ${provider}: ${error.message}`);
+    }
+}
+
+async function handleUserSession(user) {
+    try {
+        console.log('Handling user session for:', user.email);
+        appState.user = user;
+        
+        // Создаем или обновляем профиль
+        await upsertProfile(user);
+        
+        // Загружаем данные пользователя
+        await loadUserData();
+        
+        // Показываем основной интерфейс
+        showAppInterface();
+        
+        // Обновляем UI
+        updateUserUI();
+        
+    } catch (error) {
+        console.error('Session init error:', error);
+        showError('Failed to initialize user session');
+    }
+}
+
+async function upsertProfile(user) {
+    try {
+        const { error } = await supabaseClient
+            .from('profiles')
+            .upsert({
+                id: user.id,
+                email: user.email,
+                display_name: user.user_metadata.full_name || 
+                             user.user_metadata.user_name || 
+                             user.email.split('@')[0],
+                avatar_url: user.user_metadata.avatar_url,
+                updated_at: new Date().toISOString()
+            }, {
+                onConflict: 'id'
+            });
+        
+        if (error) {
+            console.error('Upsert profile error:', error);
+            // Продолжаем работу даже при ошибке профиля
+        }
+    } catch (error) {
+        console.error('Profile creation error:', error);
+        // Не прерываем поток при ошибке профиля
+    }
+}
+
+async function handleSignOut() {
+    try {
+        console.log('Signing out...');
+        
+        // Отписываемся от realtime
+        if (appState.realtimeSubscription) {
+            appState.realtimeSubscription.unsubscribe();
+            appState.realtimeSubscription = null;
+        }
+        
+        // Очищаем состояние
+        appState = {
             user: null,
             chats: [],
             activeChatId: null,
@@ -788,257 +1003,156 @@
             realtimeSubscription: null,
             profilesCache: new Map()
         };
+        
+        // Очищаем UI
+        elements.chatsList.innerHTML = '<div class="loading"><div class="loading-spinner"></div>Loading chats...</div>';
+        elements.messagesContainer.innerHTML = elements.emptyChatState.outerHTML;
+        elements.chatHeader.style.display = 'none';
+        elements.messageInputContainer.style.display = 'none';
+        
+        // Показываем экран входа
+        showAuthScreen();
+        
+    } catch (error) {
+        console.error('Sign out error:', error);
+    }
+}
 
-        // ===================== SUPABASE CLIENT =====================
-        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-            auth: {
-                storage: window.localStorage,
-                autoRefreshToken: true,
-                persistSession: true
-            }
-        });
-
-        // ===================== DOM ELEMENTS =====================
-        const elements = {
-            authScreen: document.getElementById('authScreen'),
-            appContainer: document.getElementById('appContainer'),
-            googleLogin: document.getElementById('googleLogin'),
-            githubLogin: document.getElementById('githubLogin'),
-            logoutBtn: document.getElementById('logoutBtn'),
-            userAvatar: document.getElementById('userAvatar'),
-            chatsList: document.getElementById('chatsList'),
-            newChatBtn: document.getElementById('newChatBtn'),
-            chatHeader: document.getElementById('chatHeader'),
-            chatAvatar: document.getElementById('chatAvatar'),
-            chatTitle: document.getElementById('chatTitle'),
-            chatStatus: document.getElementById('chatStatus'),
-            messagesContainer: document.getElementById('messagesContainer'),
-            emptyChatState: document.getElementById('emptyChatState'),
-            messageInputContainer: document.querySelector('.message-input-container'),
-            messageForm: document.getElementById('messageForm'),
-            messageInput: document.getElementById('messageInput'),
-            sendBtn: document.getElementById('sendBtn'),
-            newChatModal: document.getElementById('newChatModal'),
-            closeModal: document.getElementById('closeModal'),
-            searchForm: document.getElementById('searchForm'),
-            searchEmail: document.getElementById('searchEmail'),
-            searchBtn: document.getElementById('searchBtn'),
-            userResult: document.getElementById('userResult'),
-            foundUserAvatar: document.getElementById('foundUserAvatar'),
-            foundUserName: document.getElementById('foundUserName'),
-            foundUserEmail: document.getElementById('foundUserEmail'),
-            startChatBtn: document.getElementById('startChatBtn'),
-            noResults: document.getElementById('noResults'),
-            modalLoading: document.getElementById('modalLoading'),
-            errorContainer: document.getElementById('errorContainer')
-        };
-
-        // ===================== INITIALIZATION =====================
-        document.addEventListener('DOMContentLoaded', initApp);
-
-        async function initApp() {
-            // Проверяем сессию при загрузке
-            const { data: { session }, error } = await supabaseClient.auth.getSession();
-            
-            if (error) {
-                showError('Failed to restore session');
-                console.error('Session error:', error);
-                return;
-            }
-            
-            if (session) {
-                // Восстанавливаем сессию
-                await handleUserSession(session.user);
-            } else {
-                // Показываем экран входа
-                showAuthScreen();
-            }
-            
-            // Слушаем изменения аутентификации
-            supabaseClient.auth.onAuthStateChange(async (event, session) => {
-                if (event === 'SIGNED_IN' && session) {
-                    await handleUserSession(session.user);
-                } else if (event === 'SIGNED_OUT') {
-                    await handleSignOut();
-                }
-            });
-            
-            setupEventListeners();
+// ===================== DATA LOADING =====================
+async function loadUserData() {
+    try {
+        console.log('Loading user data...');
+        await loadChats();
+        
+        const urlParams = new URLSearchParams(window.location.search);
+        const chatIdFromUrl = urlParams.get('chat');
+        
+        if (chatIdFromUrl && appState.chats.some(chat => chat.id === chatIdFromUrl)) {
+            await selectChat(chatIdFromUrl);
+        } else if (appState.chats.length > 0) {
+            await selectChat(appState.chats[0].id);
         }
+        
+    } catch (error) {
+        console.error('Load user data error:', error);
+        showError('Failed to load user data');
+    }
+}
 
-        // ===================== AUTHENTICATION =====================
-        async function signInWithProvider(provider) {
-            try {
-                const { error } = await supabaseClient.auth.signInWithOAuth({
-                    provider,
-                    options: {
-                        redirectTo: window.location.origin
-                    }
+async function loadChats() {
+    try {
+        const { data: chats, error } = await supabaseClient
+            .from('chats')
+            .select(`
+                *,
+                chat_members!inner (
+                    user:profiles (
+                        id,
+                        display_name,
+                        email
+                    )
+                )
+            `)
+            .order('last_message_at', { ascending: false });
+        
+        if (error) throw error;
+        
+        // Получаем последние сообщения отдельно
+        const chatIds = chats.map(chat => chat.id);
+        const { data: lastMessages, error: messagesError } = await supabaseClient
+            .from('messages')
+            .select('chat_id, content, created_at')
+            .in('chat_id', chatIds)
+            .order('created_at', { ascending: false });
+        
+        if (messagesError) {
+            console.error('Error loading last messages:', messagesError);
+        }
+        
+        // Обрабатываем чаты
+        appState.chats = await Promise.all(chats.map(async chat => {
+            const otherMember = chat.chat_members
+                .find(member => member.user.id !== appState.user.id);
+            
+            let displayName = 'Unknown User';
+            let email = '';
+            
+            if (otherMember && otherMember.user) {
+                displayName = otherMember.user.display_name || otherMember.user.email.split('@')[0];
+                email = otherMember.user.email;
+                appState.profilesCache.set(otherMember.user.id, {
+                    display_name: displayName,
+                    email: email
                 });
-                
-                if (error) throw error;
-            } catch (error) {
-                showError(`Failed to sign in with ${provider}: ${error.message}`);
             }
-        }
-
-        async function handleUserSession(user) {
-            try {
-                appState.user = user;
-                
-                // Создаем или обновляем профиль
-                await upsertProfile(user);
-                
-                // Загружаем данные пользователя
-                await loadUserData();
-                
-                // Показываем основной интерфейс
-                showAppInterface();
-                
-                // Обновляем UI
-                updateUserUI();
-                
-            } catch (error) {
-                showError('Failed to initialize user session');
-                console.error('Session init error:', error);
-            }
-        }
-
-        async function upsertProfile(user) {
-            const { error } = await supabaseClient
-                .from('profiles')
-                .upsert({
-                    id: user.id,
-                    email: user.email,
-                    display_name: user.user_metadata.full_name || user.email.split('@')[0],
-                    avatar_url: user.user_metadata.avatar_url,
-                    updated_at: new Date().toISOString()
-                }, {
-                    onConflict: 'id'
-                });
             
-            if (error) throw error;
-        }
+            const lastMessage = lastMessages?.find(m => m.chat_id === chat.id);
+            
+            return {
+                id: chat.id,
+                display_name: displayName,
+                email: email,
+                last_message: lastMessage?.content || 'No messages yet',
+                last_message_at: lastMessage?.created_at || chat.created_at,
+                is_group: chat.is_group
+            };
+        }));
+        
+        updateChatsListUI();
+        
+    } catch (error) {
+        console.error('Load chats error:', error);
+        throw error;
+    }
+}
 
-        async function handleSignOut() {
-            try {
-                // Отписываемся от realtime
-                if (appState.realtimeSubscription) {
-                    appState.realtimeSubscription.unsubscribe();
-                    appState.realtimeSubscription = null;
-                }
-                
-                // Очищаем состояние
-                appState = {
-                    user: null,
-                    chats: [],
-                    activeChatId: null,
-                    messages: new Map(),
-                    realtimeSubscription: null,
-                    profilesCache: new Map()
-                };
-                
-                // Очищаем UI
-                elements.chatsList.innerHTML = '<div class="loading"><div class="loading-spinner"></div>Loading chats...</div>';
-                elements.messagesContainer.innerHTML = elements.emptyChatState.outerHTML;
-                elements.chatHeader.style.display = 'none';
-                elements.messageInputContainer.style.display = 'none';
-                
-                // Показываем экран входа
-                showAuthScreen();
-                
-            } catch (error) {
-                console.error('Sign out error:', error);
-            }
-        }
+async function loadMessages(chatId) {
+    try {
+        const { data: messages, error } = await supabaseClient
+            .from('messages')
+            .select(`
+                *,
+                user:profiles (
+                    display_name,
+                    email
+                )
+            `)
+            .eq('chat_id', chatId)
+            .order('created_at', { ascending: true })
+            .limit(50);
+        
+        if (error) throw error;
+        
+        appState.messages.set(chatId, messages || []);
+        updateMessagesUI(chatId);
+        subscribeToChatRealtime(chatId);
+        
+    } catch (error) {
+        console.error('Load messages error:', error);
+        throw error;
+    }
+}
 
-        // ===================== DATA LOADING =====================
-        async function loadUserData() {
-            try {
-                // Загружаем чаты пользователя
-                await loadChats();
+// ===================== REAL-TIME =====================
+function subscribeToChatRealtime(chatId) {
+    if (appState.realtimeSubscription) {
+        appState.realtimeSubscription.unsubscribe();
+    }
+    
+    appState.realtimeSubscription = supabaseClient
+        .channel(`chat:${chatId}`)
+        .on(
+            'postgres_changes',
+            {
+                event: 'INSERT',
+                schema: 'public',
+                table: 'messages',
+                filter: `chat_id=eq.${chatId}`
+            },
+            async (payload) => {
+                console.log('New message received:', payload.new.id);
                 
-                // Если есть активный чат из URL или последний чат
-                const urlParams = new URLSearchParams(window.location.search);
-                const chatIdFromUrl = urlParams.get('chat');
-                
-                if (chatIdFromUrl && appState.chats.some(chat => chat.id === chatIdFromUrl)) {
-                    await selectChat(chatIdFromUrl);
-                } else if (appState.chats.length > 0) {
-                    await selectChat(appState.chats[0].id);
-                }
-                
-            } catch (error) {
-                showError('Failed to load user data');
-                console.error('Load user data error:', error);
-            }
-        }
-
-        async function loadChats() {
-            try {
-                // Загружаем чаты пользователя
-                const { data: chats, error } = await supabaseClient
-                    .from('chats')
-                    .select(`
-                        *,
-                        last_message: messages!inner (
-                            content,
-                            created_at
-                        ),
-                        other_user: chat_members!inner (
-                            user:profiles (
-                                id,
-                                display_name,
-                                email
-                            )
-                        )
-                    `)
-                    .order('last_message_at', { ascending: false });
-                
-                if (error) throw error;
-                
-                // Фильтруем и обрабатываем чаты
-                appState.chats = await Promise.all(chats.map(async chat => {
-                    // Получаем другого пользователя в чате (не текущего)
-                    const otherMember = chat.other_user
-                        .find(member => member.user.id !== appState.user.id);
-                    
-                    // Загружаем аватар для другого пользователя
-                    let displayName = 'Unknown User';
-                    let email = '';
-                    
-                    if (otherMember && otherMember.user) {
-                        displayName = otherMember.user.display_name || otherMember.user.email.split('@')[0];
-                        email = otherMember.user.email;
-                        appState.profilesCache.set(otherMember.user.id, {
-                            display_name: displayName,
-                            email: email
-                        });
-                    }
-                    
-                    return {
-                        id: chat.id,
-                        display_name: displayName,
-                        email: email,
-                        last_message: chat.last_message?.[0]?.content || 'No messages yet',
-                        last_message_at: chat.last_message_at,
-                        is_group: chat.is_group
-                    };
-                }));
-                
-                // Обновляем UI списка чатов
-                updateChatsListUI();
-                
-            } catch (error) {
-                console.error('Load chats error:', error);
-                throw error;
-            }
-        }
-
-        async function loadMessages(chatId) {
-            try {
-                // Загружаем последние 50 сообщений
-                const { data: messages, error } = await supabaseClient
+                const { data: message, error } = await supabaseClient
                     .from('messages')
                     .select(`
                         *,
@@ -1047,555 +1161,482 @@
                             email
                         )
                     `)
-                    .eq('chat_id', chatId)
-                    .order('created_at', { ascending: true })
-                    .limit(50);
-                
-                if (error) throw error;
-                
-                // Сохраняем в кэш
-                appState.messages.set(chatId, messages || []);
-                
-                // Обновляем UI сообщений
-                updateMessagesUI(chatId);
-                
-                // Подписываемся на realtime
-                subscribeToChatRealtime(chatId);
-                
-            } catch (error) {
-                console.error('Load messages error:', error);
-                throw error;
-            }
-        }
-
-        // ===================== REAL-TIME =====================
-        function subscribeToChatRealtime(chatId) {
-            // Отписываемся от предыдущей подписки
-            if (appState.realtimeSubscription) {
-                appState.realtimeSubscription.unsubscribe();
-            }
-            
-            // Подписываемся на новые сообщения в этом чате
-            appState.realtimeSubscription = supabaseClient
-                .channel(`chat:${chatId}`)
-                .on(
-                    'postgres_changes',
-                    {
-                        event: 'INSERT',
-                        schema: 'public',
-                        table: 'messages',
-                        filter: `chat_id=eq.${chatId}`
-                    },
-                    async (payload) => {
-                        // Получаем полные данные сообщения с профилем пользователя
-                        const { data: message, error } = await supabaseClient
-                            .from('messages')
-                            .select(`
-                                *,
-                                user:profiles (
-                                    display_name,
-                                    email
-                                )
-                            `)
-                            .eq('id', payload.new.id)
-                            .single();
-                        
-                        if (!error && message) {
-                            // Добавляем сообщение в кэш
-                            const messages = appState.messages.get(chatId) || [];
-                            messages.push(message);
-                            appState.messages.set(chatId, messages);
-                            
-                            // Обновляем UI, если это активный чат
-                            if (appState.activeChatId === chatId) {
-                                appendMessageToUI(message);
-                            }
-                            
-                            // Обновляем список чатов
-                            await loadChats();
-                        }
-                    }
-                )
-                .subscribe();
-        }
-
-        // ===================== CHAT MANAGEMENT =====================
-        async function selectChat(chatId) {
-            try {
-                appState.activeChatId = chatId;
-                
-                // Обновляем URL без перезагрузки страницы
-                const url = new URL(window.location);
-                url.searchParams.set('chat', chatId);
-                window.history.pushState({}, '', url);
-                
-                // Находим выбранный чат
-                const chat = appState.chats.find(c => c.id === chatId);
-                if (!chat) return;
-                
-                // Обновляем UI чата
-                updateChatUI(chat);
-                
-                // Загружаем сообщения
-                await loadMessages(chatId);
-                
-                // Показываем поле ввода
-                elements.messageInputContainer.style.display = 'block';
-                elements.messageInput.disabled = false;
-                elements.sendBtn.disabled = false;
-                
-                // Фокусируемся на поле ввода
-                setTimeout(() => {
-                    elements.messageInput.focus();
-                }, 100);
-                
-            } catch (error) {
-                showError('Failed to select chat');
-                console.error('Select chat error:', error);
-            }
-        }
-
-        async function searchUserByEmail(email) {
-            try {
-                showModalLoading(true);
-                hideResults();
-                
-                const { data, error } = await supabaseClient.rpc('search_user_by_email', {
-                    search_email: email
-                });
-                
-                if (error) throw error;
-                
-                if (data && data.length > 0) {
-                    const user = data[0];
-                    showUserResult(user);
-                } else {
-                    showNoResults();
-                }
-                
-            } catch (error) {
-                showError('Failed to search user');
-                console.error('Search user error:', error);
-            } finally {
-                showModalLoading(false);
-            }
-        }
-
-        async function createPrivateChat(otherUserId) {
-            try {
-                const { data: chatId, error } = await supabaseClient.rpc('create_private_chat', {
-                    other_user_id: otherUserId
-                });
-                
-                if (error) throw error;
-                
-                // Обновляем список чатов
-                await loadChats();
-                
-                // Закрываем модальное окно
-                closeNewChatModal();
-                
-                // Выбираем новый чат
-                await selectChat(chatId);
-                
-            } catch (error) {
-                showError('Failed to create chat');
-                console.error('Create chat error:', error);
-            }
-        }
-
-        async function sendMessage(content) {
-            if (!content.trim() || !appState.activeChatId) return;
-            
-            const chatId = appState.activeChatId;
-            const messageContent = content.trim();
-            
-            try {
-                // Optimistic UI: сразу показываем сообщение
-                const optimisticMessage = {
-                    id: `optimistic_${Date.now()}`,
-                    chat_id: chatId,
-                    user_id: appState.user.id,
-                    content: messageContent,
-                    created_at: new Date().toISOString(),
-                    user: {
-                        display_name: appState.user.user_metadata.full_name || appState.user.email.split('@')[0],
-                        email: appState.user.email
-                    },
-                    isOptimistic: true
-                };
-                
-                // Добавляем optimistic сообщение
-                const messages = appState.messages.get(chatId) || [];
-                messages.push(optimisticMessage);
-                appState.messages.set(chatId, messages);
-                appendMessageToUI(optimisticMessage);
-                
-                // Отправляем на сервер
-                const { data, error } = await supabaseClient
-                    .from('messages')
-                    .insert({
-                        chat_id: chatId,
-                        content: messageContent
-                    })
-                    .select()
+                    .eq('id', payload.new.id)
                     .single();
                 
-                if (error) throw error;
-                
-                // Заменяем optimistic сообщение реальным
-                if (data) {
-                    // Удаляем optimistic сообщение
-                    const updatedMessages = messages.filter(m => !m.isOptimistic);
+                if (!error && message) {
+                    const messages = appState.messages.get(chatId) || [];
+                    messages.push(message);
+                    appState.messages.set(chatId, messages);
                     
-                    // Получаем полные данные
-                    const { data: fullMessage, error: fetchError } = await supabaseClient
-                        .from('messages')
-                        .select(`
-                            *,
-                            user:profiles (
-                                display_name,
-                                email
-                            )
-                        `)
-                        .eq('id', data.id)
-                        .single();
-                    
-                    if (!fetchError && fullMessage) {
-                        updatedMessages.push(fullMessage);
-                        appState.messages.set(chatId, updatedMessages);
-                        
-                        // Обновляем UI
-                        updateMessagesUI(chatId);
+                    if (appState.activeChatId === chatId) {
+                        appendMessageToUI(message);
                     }
+                    
+                    // Обновляем список чатов
+                    await loadChats();
                 }
-                
-                // Обновляем список чатов
-                await loadChats();
-                
-            } catch (error) {
-                showError('Failed to send message');
-                console.error('Send message error:', error);
-                
-                // Удаляем optimistic сообщение при ошибке
-                const messages = appState.messages.get(chatId) || [];
-                const filteredMessages = messages.filter(m => !m.isOptimistic);
-                appState.messages.set(chatId, filteredMessages);
+            }
+        )
+        .subscribe((status) => {
+            console.log(`Realtime subscription status for chat ${chatId}:`, status);
+        });
+}
+
+// ===================== CHAT MANAGEMENT =====================
+async function selectChat(chatId) {
+    try {
+        console.log('Selecting chat:', chatId);
+        appState.activeChatId = chatId;
+        
+        const url = new URL(window.location);
+        url.searchParams.set('chat', chatId);
+        window.history.pushState({}, '', url);
+        
+        const chat = appState.chats.find(c => c.id === chatId);
+        if (!chat) return;
+        
+        updateChatUI(chat);
+        await loadMessages(chatId);
+        
+        elements.messageInputContainer.style.display = 'block';
+        elements.messageInput.disabled = false;
+        elements.sendBtn.disabled = false;
+        
+        setTimeout(() => {
+            elements.messageInput.focus();
+        }, 100);
+        
+    } catch (error) {
+        console.error('Select chat error:', error);
+        showError('Failed to select chat');
+    }
+}
+
+async function searchUserByEmail(email) {
+    try {
+        showModalLoading(true);
+        hideResults();
+        
+        const { data, error } = await supabaseClient.rpc('search_user_by_email', {
+            search_email: email
+        });
+        
+        if (error) throw error;
+        
+        if (data && data.length > 0) {
+            const user = data[0];
+            showUserResult(user);
+        } else {
+            showNoResults();
+        }
+        
+    } catch (error) {
+        console.error('Search user error:', error);
+        showError('Failed to search user');
+    } finally {
+        showModalLoading(false);
+    }
+}
+
+async function createPrivateChat(otherUserId) {
+    try {
+        const { data: chatId, error } = await supabaseClient.rpc('create_private_chat', {
+            other_user_id: otherUserId
+        });
+        
+        if (error) throw error;
+        
+        await loadChats();
+        closeNewChatModal();
+        await selectChat(chatId);
+        
+    } catch (error) {
+        console.error('Create chat error:', error);
+        showError('Failed to create chat');
+    }
+}
+
+async function sendMessage(content) {
+    if (!content.trim() || !appState.activeChatId) return;
+    
+    const chatId = appState.activeChatId;
+    const messageContent = content.trim();
+    
+    try {
+        // Optimistic UI
+        const optimisticMessage = {
+            id: `optimistic_${Date.now()}`,
+            chat_id: chatId,
+            user_id: appState.user.id,
+            content: messageContent,
+            created_at: new Date().toISOString(),
+            user: {
+                display_name: appState.user.user_metadata.full_name || 
+                             appState.user.user_metadata.user_name || 
+                             appState.user.email.split('@')[0],
+                email: appState.user.email
+            },
+            isOptimistic: true
+        };
+        
+        const messages = appState.messages.get(chatId) || [];
+        messages.push(optimisticMessage);
+        appState.messages.set(chatId, messages);
+        appendMessageToUI(optimisticMessage);
+        
+        // Отправляем на сервер
+        const { data, error } = await supabaseClient
+            .from('messages')
+            .insert({
+                chat_id: chatId,
+                content: messageContent
+            })
+            .select()
+            .single();
+        
+        if (error) throw error;
+        
+        // Заменяем optimistic сообщение
+        if (data) {
+            const updatedMessages = messages.filter(m => !m.isOptimistic);
+            const { data: fullMessage, error: fetchError } = await supabaseClient
+                .from('messages')
+                .select(`
+                    *,
+                    user:profiles (
+                        display_name,
+                        email
+                    )
+                `)
+                .eq('id', data.id)
+                .single();
+            
+            if (!fetchError && fullMessage) {
+                updatedMessages.push(fullMessage);
+                appState.messages.set(chatId, updatedMessages);
                 updateMessagesUI(chatId);
             }
         }
+        
+        await loadChats();
+        
+    } catch (error) {
+        console.error('Send message error:', error);
+        showError('Failed to send message');
+        
+        const messages = appState.messages.get(chatId) || [];
+        const filteredMessages = messages.filter(m => !m.isOptimistic);
+        appState.messages.set(chatId, filteredMessages);
+        updateMessagesUI(chatId);
+    }
+}
 
-        // ===================== UI UPDATES =====================
-        function showAuthScreen() {
-            elements.authScreen.style.display = 'flex';
-            elements.appContainer.style.display = 'none';
-        }
+// ===================== UI UPDATES =====================
+function showAuthScreen() {
+    elements.authScreen.style.display = 'flex';
+    elements.appContainer.style.display = 'none';
+}
 
-        function showAppInterface() {
-            elements.authScreen.style.display = 'none';
-            elements.appContainer.style.display = 'flex';
-        }
+function showAppInterface() {
+    elements.authScreen.style.display = 'none';
+    elements.appContainer.style.display = 'flex';
+}
 
-        function updateUserUI() {
-            if (!appState.user) return;
-            
-            const displayName = appState.user.user_metadata.full_name || appState.user.email.split('@')[0];
-            const initials = displayName
-                .split(' ')
-                .map(n => n[0])
-                .join('')
-                .toUpperCase()
-                .slice(0, 2);
-            
-            elements.userAvatar.textContent = initials;
-        }
+function updateUserUI() {
+    if (!appState.user) return;
+    
+    const displayName = appState.user.user_metadata.full_name || 
+                       appState.user.user_metadata.user_name || 
+                       appState.user.email.split('@')[0];
+    const initials = displayName
+        .split(' ')
+        .map(n => n[0])
+        .join('')
+        .toUpperCase()
+        .slice(0, 2);
+    
+    elements.userAvatar.textContent = initials;
+}
 
-        function updateChatsListUI() {
-            if (appState.chats.length === 0) {
-                elements.chatsList.innerHTML = `
-                    <div class="empty-state">
-                        <div class="empty-state-icon">💬</div>
-                        <p>No conversations yet</p>
-                        <p style="font-size: 0.875rem; margin-top: 0.5rem;">Start a new chat to begin messaging</p>
-                    </div>
-                `;
-                return;
-            }
-            
-            elements.chatsList.innerHTML = appState.chats.map(chat => `
-                <div class="chat-item ${appState.activeChatId === chat.id ? 'active' : ''}" 
-                     data-chat-id="${chat.id}">
-                    <div class="chat-avatar">
-                        ${getInitials(chat.display_name)}
-                    </div>
-                    <div class="chat-info">
-                        <div class="chat-name">${escapeHtml(chat.display_name)}</div>
-                        <div class="last-message">${escapeHtml(truncateText(chat.last_message, 30))}</div>
-                    </div>
-                    <div class="chat-time">
-                        ${formatTime(chat.last_message_at)}
-                    </div>
-                </div>
-            `).join('');
-            
-            // Добавляем обработчики кликов
-            document.querySelectorAll('.chat-item').forEach(item => {
-                item.addEventListener('click', async () => {
-                    const chatId = item.dataset.chatId;
-                    await selectChat(chatId);
-                });
-            });
-        }
-
-        function updateChatUI(chat) {
-            elements.chatHeader.style.display = 'flex';
-            elements.emptyChatState.style.display = 'none';
-            
-            elements.chatAvatar.textContent = getInitials(chat.display_name);
-            elements.chatTitle.textContent = chat.display_name;
-            elements.chatStatus.textContent = chat.is_group ? 'Group chat' : 'Direct message';
-        }
-
-        function updateMessagesUI(chatId) {
-            const messages = appState.messages.get(chatId) || [];
-            
-            if (messages.length === 0) {
-                elements.messagesContainer.innerHTML = `
-                    <div class="empty-state">
-                        <div class="empty-state-icon">✉️</div>
-                        <h3>No messages yet</h3>
-                        <p>Send the first message to start the conversation</p>
-                    </div>
-                `;
-                return;
-            }
-            
-            elements.messagesContainer.innerHTML = messages
-                .map(message => createMessageElement(message))
-                .join('');
-            
-            // Прокручиваем вниз
-            scrollToBottom();
-        }
-
-        function appendMessageToUI(message) {
-            const messageElement = createMessageElement(message);
-            elements.messagesContainer.insertAdjacentHTML('beforeend', messageElement);
-            scrollToBottom();
-        }
-
-        function createMessageElement(message) {
-            const isOwn = message.user_id === appState.user?.id;
-            const senderName = message.user?.display_name || 'Unknown';
-            const time = formatTime(message.created_at, true);
-            
-            return `
-                <div class="message ${isOwn ? 'message-outgoing' : 'message-incoming'}">
-                    ${!isOwn ? `<div class="message-sender">${escapeHtml(senderName)}</div>` : ''}
-                    <div class="message-bubble">${escapeHtml(message.content)}</div>
-                    <div class="message-time">${time}</div>
-                </div>
-            `;
-        }
-
-        // ===================== MODAL MANAGEMENT =====================
-        function openNewChatModal() {
-            elements.newChatModal.style.display = 'flex';
-            elements.searchEmail.value = '';
-            hideResults();
-            elements.searchEmail.focus();
-        }
-
-        function closeNewChatModal() {
-            elements.newChatModal.style.display = 'none';
-            elements.searchEmail.value = '';
-            hideResults();
-        }
-
-        function showUserResult(user) {
-            const initials = getInitials(user.display_name || user.email.split('@')[0]);
-            
-            elements.foundUserAvatar.textContent = initials;
-            elements.foundUserName.textContent = user.display_name || user.email.split('@')[0];
-            elements.foundUserEmail.textContent = user.email;
-            
-            elements.userResult.style.display = 'block';
-            elements.noResults.style.display = 'none';
-            
-            // Сохраняем найденного пользователя
-            elements.startChatBtn.onclick = () => createPrivateChat(user.user_id);
-        }
-
-        function showNoResults() {
-            elements.userResult.style.display = 'none';
-            elements.noResults.style.display = 'block';
-        }
-
-        function hideResults() {
-            elements.userResult.style.display = 'none';
-            elements.noResults.style.display = 'none';
-        }
-
-        function showModalLoading(show) {
-            elements.modalLoading.style.display = show ? 'flex' : 'none';
-            elements.searchBtn.disabled = show;
-        }
-
-        // ===================== ERROR HANDLING =====================
-        function showError(message) {
-            elements.errorContainer.textContent = message;
-            elements.errorContainer.style.display = 'block';
-            
-            setTimeout(() => {
-                elements.errorContainer.style.display = 'none';
-            }, 5000);
-        }
-
-        // ===================== UTILITY FUNCTIONS =====================
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
-        }
-
-        function getInitials(name) {
-            return name
-                .split(' ')
-                .map(n => n[0])
-                .join('')
-                .toUpperCase()
-                .slice(0, 2);
-        }
-
-        function truncateText(text, maxLength) {
-            if (text.length <= maxLength) return text;
-            return text.slice(0, maxLength) + '...';
-        }
-
-        function formatTime(dateString, showSeconds = false) {
-            const date = new Date(dateString);
-            const now = new Date();
-            const diffMs = now - date;
-            const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-            
-            if (diffDays === 0) {
-                // Сегодня
-                return date.toLocaleTimeString([], { 
-                    hour: '2-digit', 
-                    minute: '2-digit',
-                    second: showSeconds ? '2-digit' : undefined
-                });
-            } else if (diffDays === 1) {
-                // Вчера
-                return 'Yesterday';
-            } else if (diffDays < 7) {
-                // На этой неделе
-                return date.toLocaleDateString([], { weekday: 'short' });
-            } else {
-                // Более недели назад
-                return date.toLocaleDateString([], { 
-                    month: 'short', 
-                    day: 'numeric'
-                });
-            }
-        }
-
-        function scrollToBottom() {
-            setTimeout(() => {
-                const container = elements.messagesContainer;
-                container.scrollTop = container.scrollHeight;
-            }, 100);
-        }
-
-        function autoResizeTextarea(textarea) {
-            textarea.style.height = 'auto';
-            textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
-        }
-
-        // ===================== EVENT LISTENERS =====================
-        function setupEventListeners() {
-            // Аутентификация
-            elements.googleLogin.addEventListener('click', () => signInWithProvider('google'));
-            elements.githubLogin.addEventListener('click', () => signInWithProvider('github'));
-            elements.logoutBtn.addEventListener('click', () => supabaseClient.auth.signOut());
-            
-            // Новый чат
-            elements.newChatBtn.addEventListener('click', openNewChatModal);
-            elements.closeModal.addEventListener('click', closeNewChatModal);
-            elements.newChatModal.addEventListener('click', (e) => {
-                if (e.target === elements.newChatModal) {
-                    closeNewChatModal();
-                }
-            });
-            
-            // Поиск пользователя
-            elements.searchForm.addEventListener('submit', async (e) => {
-                e.preventDefault();
-                const email = elements.searchEmail.value.trim();
-                if (email) {
-                    await searchUserByEmail(email);
-                }
-            });
-            
-            // Отправка сообщения
-            elements.messageForm.addEventListener('submit', async (e) => {
-                e.preventDefault();
-                const content = elements.messageInput.value.trim();
-                if (content) {
-                    await sendMessage(content);
-                    elements.messageInput.value = '';
-                    autoResizeTextarea(elements.messageInput);
-                    elements.sendBtn.disabled = true;
-                }
-            });
-            
-            // Обработка ввода сообщения
-            elements.messageInput.addEventListener('input', (e) => {
-                autoResizeTextarea(e.target);
-                elements.sendBtn.disabled = !e.target.value.trim();
-            });
-            
-            elements.messageInput.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    elements.messageForm.dispatchEvent(new Event('submit'));
-                }
-            });
-            
-            // Обработка изменения размера окна
-            window.addEventListener('resize', () => {
-                if (elements.messageInput) {
-                    autoResizeTextarea(elements.messageInput);
-                }
-            });
-            
-            // Обработка истории браузера
-            window.addEventListener('popstate', async () => {
-                const urlParams = new URLSearchParams(window.location.search);
-                const chatId = urlParams.get('chat');
-                if (chatId && chatId !== appState.activeChatId) {
-                    await selectChat(chatId);
-                }
-            });
-        }
-
-        // ===================== ОБРАБОТКА СЦЕНАРИЕВ ОТКАЗА =====================
-        // Обработка потери интернета
-        window.addEventListener('online', () => {
-            console.log('Internet connection restored');
+function updateChatsListUI() {
+    if (appState.chats.length === 0) {
+        elements.chatsList.innerHTML = `
+            <div class="empty-state">
+                <div class="empty-state-icon">💬</div>
+                <p>No conversations yet</p>
+                <p style="font-size: 0.875rem; margin-top: 0.5rem;">Start a new chat to begin messaging</p>
+            </div>
+        `;
+        return;
+    }
+    
+    elements.chatsList.innerHTML = appState.chats.map(chat => `
+        <div class="chat-item ${appState.activeChatId === chat.id ? 'active' : ''}" 
+             data-chat-id="${chat.id}">
+            <div class="chat-avatar">
+                ${getInitials(chat.display_name)}
+            </div>
+            <div class="chat-info">
+                <div class="chat-name">${escapeHtml(chat.display_name)}</div>
+                <div class="last-message">${escapeHtml(truncateText(chat.last_message, 30))}</div>
+            </div>
+            <div class="chat-time">
+                ${formatTime(chat.last_message_at)}
+            </div>
+        </div>
+    `).join('');
+    
+    document.querySelectorAll('.chat-item').forEach(item => {
+        item.addEventListener('click', async () => {
+            const chatId = item.dataset.chatId;
+            await selectChat(chatId);
         });
+    });
+}
 
-        window.addEventListener('offline', () => {
-            showError('You are offline. Messages will be sent when connection is restored.');
-        });
+function updateChatUI(chat) {
+    elements.chatHeader.style.display = 'flex';
+    elements.emptyChatState.style.display = 'none';
+    
+    elements.chatAvatar.textContent = getInitials(chat.display_name);
+    elements.chatTitle.textContent = chat.display_name;
+    elements.chatStatus.textContent = chat.is_group ? 'Group chat' : 'Direct message';
+}
 
-        // Обработка нескольких вкладок
-        window.addEventListener('storage', (e) => {
-            if (e.key === 'sb-auth-token' && !e.newValue) {
-                // Пользователь вышел в другой вкладке
-                handleSignOut();
-            }
+function updateMessagesUI(chatId) {
+    const messages = appState.messages.get(chatId) || [];
+    
+    if (messages.length === 0) {
+        elements.messagesContainer.innerHTML = `
+            <div class="empty-state">
+                <div class="empty-state-icon">✉️</div>
+                <h3>No messages yet</h3>
+                <p>Send the first message to start the conversation</p>
+            </div>
+        `;
+        return;
+    }
+    
+    elements.messagesContainer.innerHTML = messages
+        .map(message => createMessageElement(message))
+        .join('');
+    
+    scrollToBottom();
+}
+
+function appendMessageToUI(message) {
+    const messageElement = createMessageElement(message);
+    elements.messagesContainer.insertAdjacentHTML('beforeend', messageElement);
+    scrollToBottom();
+}
+
+function createMessageElement(message) {
+    const isOwn = message.user_id === appState.user?.id;
+    const senderName = message.user?.display_name || 'Unknown';
+    const time = formatTime(message.created_at, true);
+    
+    return `
+        <div class="message ${isOwn ? 'message-outgoing' : 'message-incoming'}">
+            ${!isOwn ? `<div class="message-sender">${escapeHtml(senderName)}</div>` : ''}
+            <div class="message-bubble">${escapeHtml(message.content)}</div>
+            <div class="message-time">${time}</div>
+        </div>
+    `;
+}
+
+// ===================== MODAL MANAGEMENT =====================
+function openNewChatModal() {
+    elements.newChatModal.style.display = 'flex';
+    elements.searchEmail.value = '';
+    hideResults();
+    elements.searchEmail.focus();
+}
+
+function closeNewChatModal() {
+    elements.newChatModal.style.display = 'none';
+    elements.searchEmail.value = '';
+    hideResults();
+}
+
+function showUserResult(user) {
+    const initials = getInitials(user.display_name || user.email.split('@')[0]);
+    
+    elements.foundUserAvatar.textContent = initials;
+    elements.foundUserName.textContent = user.display_name || user.email.split('@')[0];
+    elements.foundUserEmail.textContent = user.email;
+    
+    elements.userResult.style.display = 'block';
+    elements.noResults.style.display = 'none';
+    
+    elements.startChatBtn.onclick = () => createPrivateChat(user.user_id);
+}
+
+function showNoResults() {
+    elements.userResult.style.display = 'none';
+    elements.noResults.style.display = 'block';
+}
+
+function hideResults() {
+    elements.userResult.style.display = 'none';
+    elements.noResults.style.display = 'none';
+}
+
+function showModalLoading(show) {
+    elements.modalLoading.style.display = show ? 'flex' : 'none';
+    elements.searchBtn.disabled = show;
+}
+
+// ===================== ERROR HANDLING =====================
+function showError(message) {
+    elements.errorContainer.textContent = message;
+    elements.errorContainer.style.display = 'block';
+    
+    setTimeout(() => {
+        elements.errorContainer.style.display = 'none';
+    }, 5000);
+}
+
+// ===================== UTILITY FUNCTIONS =====================
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function getInitials(name) {
+    return name
+        .split(' ')
+        .map(n => n[0])
+        .join('')
+        .toUpperCase()
+        .slice(0, 2) || '?';
+}
+
+function truncateText(text, maxLength) {
+    if (text.length <= maxLength) return text;
+    return text.slice(0, maxLength) + '...';
+}
+
+function formatTime(dateString, showSeconds = false) {
+    if (!dateString) return '';
+    
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return '';
+    
+    const now = new Date();
+    const diffMs = now - date;
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    
+    if (diffDays === 0) {
+        return date.toLocaleTimeString([], { 
+            hour: '2-digit', 
+            minute: '2-digit'
         });
+    } else if (diffDays === 1) {
+        return 'Yesterday';
+    } else if (diffDays < 7) {
+        return date.toLocaleDateString([], { weekday: 'short' });
+    } else {
+        return date.toLocaleDateString([], { 
+            month: 'short', 
+            day: 'numeric'
+        });
+    }
+}
+
+function scrollToBottom() {
+    setTimeout(() => {
+        const container = elements.messagesContainer;
+        if (container) {
+            container.scrollTop = container.scrollHeight;
+        }
+    }, 100);
+}
+
+function autoResizeTextarea(textarea) {
+    textarea.style.height = 'auto';
+    textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
+}
+
+// ===================== EVENT LISTENERS =====================
+function setupEventListeners() {
+    // Аутентификация
+    elements.googleLogin.addEventListener('click', () => signInWithProvider('google'));
+    elements.githubLogin.addEventListener('click', () => signInWithProvider('github'));
+    elements.logoutBtn.addEventListener('click', () => supabaseClient.auth.signOut());
+    
+    // Новый чат
+    elements.newChatBtn.addEventListener('click', openNewChatModal);
+    elements.closeModal.addEventListener('click', closeNewChatModal);
+    elements.newChatModal.addEventListener('click', (e) => {
+        if (e.target === elements.newChatModal) {
+            closeNewChatModal();
+        }
+    });
+    
+    // Поиск пользователя
+    elements.searchForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const email = elements.searchEmail.value.trim();
+        if (email) {
+            await searchUserByEmail(email);
+        }
+    });
+    
+    // Отправка сообщения
+    elements.messageForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const content = elements.messageInput.value.trim();
+        if (content) {
+            await sendMessage(content);
+            elements.messageInput.value = '';
+            autoResizeTextarea(elements.messageInput);
+            elements.sendBtn.disabled = true;
+        }
+    });
+    
+    // Обработка ввода сообщения
+    elements.messageInput.addEventListener('input', (e) => {
+        autoResizeTextarea(e.target);
+        elements.sendBtn.disabled = !e.target.value.trim();
+    });
+    
+    elements.messageInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            elements.messageForm.dispatchEvent(new Event('submit'));
+        }
+    });
+    
+    // Обработка изменения размера окна
+    window.addEventListener('resize', () => {
+        if (elements.messageInput) {
+            autoResizeTextarea(elements.messageInput);
+        }
+    });
+    
+    // Обработка истории браузера
+    window.addEventListener('popstate', async () => {
+        const urlParams = new URLSearchParams(window.location.search);
+        const chatId = urlParams.get('chat');
+        if (chatId && chatId !== appState.activeChatId) {
+            await selectChat(chatId);
+        }
+    });
+    
+    // Обработка потери интернета
+    window.addEventListener('online', () => {
+        console.log('Internet connection restored');
+    });
+
+    window.addEventListener('offline', () => {
+        showError('You are offline. Messages will be sent when connection is restored.');
+    });
+}
+
+// Запуск приложения
+console.log('PING Messenger starting...');
     </script>
 </body>
 </html>
