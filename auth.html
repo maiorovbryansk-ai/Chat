@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Authenticating...</title>
+    <script>
+        // Извлекаем токен из URL и передаем его в родительское окно
+        const hash = window.location.hash;
+        if (hash) {
+            window.opener.postMessage({ type: 'oauth-callback', hash: hash }, '*');
+            window.close();
+        }
+    </script>
+</head>
+<body>
+    Authenticating, please wait...
+</body>
+</html>
