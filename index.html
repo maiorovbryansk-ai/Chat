@@ -775,7 +775,7 @@
     <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
     
     <script>
- // ===================== CONFIGURATION =====================
+// ===================== CONFIGURATION =====================
 const SUPABASE_URL = 'https://mfvgbozkoepmiyqijgjg.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_5qZGytaJZw5ig_osRnrMbw_lAwHp6Ia';
 
@@ -795,8 +795,7 @@ const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_
         storage: window.localStorage,
         autoRefreshToken: true,
         persistSession: true,
-        detectSessionInUrl: true,
-        flowType: 'pkce'
+        detectSessionInUrl: true
     }
 });
 
@@ -840,36 +839,44 @@ document.addEventListener('DOMContentLoaded', initApp);
 
 async function initApp() {
     try {
-        console.log('Initializing app...');
+        console.log('Initializing PING Messenger...');
+        console.log('Current URL:', window.location.href);
         
-        // Сначала проверяем наличие OAuth hash в URL
-        const hash = window.location.hash;
-        if (hash && hash.includes('access_token')) {
-            console.log('Found OAuth hash in URL');
+        // Проверяем наличие OAuth code в URL (PKCE flow)
+        const urlParams = new URLSearchParams(window.location.search);
+        const oauthCode = urlParams.get('code');
+        
+        if (oauthCode) {
+            console.log('Found OAuth code, exchanging for session...');
             
-            // Обрабатываем OAuth callback
-            const { data: { session }, error } = await supabaseClient.auth.getSession();
-            
-            if (error) {
-                console.error('OAuth callback error:', error);
-                showError('Authentication failed');
-            } else if (session) {
-                console.log('OAuth successful, user:', session.user.email);
+            try {
+                // PKCE flow: обмениваем код на сессию
+                const { data, error } = await supabaseClient.auth.exchangeCodeForSession(oauthCode);
                 
-                // Очищаем URL от токенов
-                clearOAuthHash();
-                
-                // Восстанавливаем сессию
-                await handleUserSession(session.user);
-                return;
+                if (error) {
+                    console.error('Code exchange error:', error);
+                    showError('Authentication failed: ' + error.message);
+                } else if (data.session) {
+                    console.log('Authentication successful for:', data.session.user.email);
+                    
+                    // Очищаем URL от OAuth параметров
+                    clearOAuthParams();
+                    
+                    // Восстанавливаем сессию
+                    await handleUserSession(data.session.user);
+                    return;
+                }
+            } catch (exchangeError) {
+                console.error('Exchange error:', exchangeError);
+                showError('Authentication failed. Please try again.');
             }
         }
         
-        // Если нет OAuth hash, проверяем существующую сессию
+        // Проверяем существующую сессию
         const { data: { session }, error } = await supabaseClient.auth.getSession();
         
         if (error) {
-            showError('Failed to restore session');
+            showError('Failed to restore session: ' + error.message);
             console.error('Session error:', error);
             return;
         }
@@ -887,12 +894,10 @@ async function initApp() {
             console.log('Auth state changed:', event);
             
             if (event === 'SIGNED_IN' && session) {
-                clearOAuthHash();
+                clearOAuthParams();
                 await handleUserSession(session.user);
             } else if (event === 'SIGNED_OUT') {
                 await handleSignOut();
-            } else if (event === 'TOKEN_REFRESHED') {
-                console.log('Token refreshed');
             }
         });
         
@@ -904,11 +909,12 @@ async function initApp() {
     }
 }
 
-function clearOAuthHash() {
+function clearOAuthParams() {
     // Очищаем URL от OAuth параметров
-    if (window.location.hash && window.location.hash.includes('access_token')) {
-        window.history.replaceState(null, null, window.location.pathname + window.location.search);
-        console.log('Cleared OAuth hash from URL');
+    if (window.location.search.includes('code=')) {
+        const newUrl = window.location.origin + window.location.pathname;
+        window.history.replaceState({}, '', newUrl);
+        console.log('Cleared OAuth params from URL');
     }
 }
 
@@ -917,10 +923,14 @@ async function signInWithProvider(provider) {
     try {
         console.log(`Signing in with ${provider}...`);
         
+        // Получаем текущий URL для редиректа (включая путь /Chat/)
+        const currentUrl = window.location.origin + window.location.pathname;
+        console.log('Redirect URL:', currentUrl);
+        
         const { data, error } = await supabaseClient.auth.signInWithOAuth({
             provider: provider,
             options: {
-                redirectTo: window.location.origin,
+                redirectTo: currentUrl,
                 queryParams: {
                     access_type: 'offline',
                     prompt: 'consent'
@@ -929,6 +939,7 @@ async function signInWithProvider(provider) {
         });
         
         if (error) throw error;
+        
     } catch (error) {
         console.error(`${provider} sign in error:`, error);
         showError(`Failed to sign in with ${provider}: ${error.message}`);
@@ -976,11 +987,9 @@ async function upsertProfile(user) {
         
         if (error) {
             console.error('Upsert profile error:', error);
-            // Продолжаем работу даже при ошибке профиля
         }
     } catch (error) {
         console.error('Profile creation error:', error);
-        // Не прерываем поток при ошибке профиля
     }
 }
 
@@ -1635,8 +1644,7 @@ function setupEventListeners() {
     });
 }
 
-// Запуск приложения
-console.log('PING Messenger starting...');
+console.log('PING Messenger loaded successfully!');
     </script>
 </body>
 </html>
