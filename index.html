@@ -98,9 +98,9 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script>
-    const SUPABASE_URL = 'https://ahrfdakfvhyvphsdzwex.supabase.co';
+    const SUPABASE_URL = 'https://ahrfdakfvhyvphsdzwex.SB.co';
     const SUPABASE_ANON_KEY = 'sb_publishable_RLUW9ZE0dl6t46ZVkJXaKA_DpaGNwzv';
-    const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const SB = SB.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     let currentUser = null;
     let currentChatId = null;
@@ -114,7 +114,7 @@
     const reactionsList = ['👍', '❤️', '😂', '😮', '😢', '😡'];
 
     // Handle auth state change
-    supabase.auth.onAuthStateChange(async (event, session) => {
+    SB.auth.onAuthStateChange(async (event, session) => {
       if (event === 'SIGNED_IN') {
         handleLoggedIn(session.user);
       }
@@ -125,7 +125,7 @@
 
     // Check existing session on load
     window.addEventListener('load', async () => {
-      const { data: { session } } = await supabase.auth.getSession();
+      const { data: { session } } = await SB.auth.getSession();
       if (session) {
         handleLoggedIn(session.user);
       } else {
@@ -147,7 +147,7 @@
     document.getElementById('login-button').addEventListener('click', async () => {
       const email = document.getElementById('login-email').value;
       const password = document.getElementById('login-password').value;
-      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      const { data, error } = await SB.auth.signInWithPassword({ email, password });
       if (error) {
         alert(error.message);
       }
@@ -175,7 +175,7 @@
         alert('Пароли не совпадают');
         return;
       }
-      const { data, error } = await supabase.auth.signUp({ email, password });
+      const { data, error } = await SB.auth.signUp({ email, password });
       if (error) {
         alert(error.message);
       } else {
@@ -190,13 +190,13 @@
       let nickname = document.getElementById('nickname-input').value.trim();
       if (!nickname.startsWith('@')) nickname = '@' + nickname;
       // Check uniqueness
-      const { data: exists } = await supabase.from('profiles').select('id').eq('nickname', nickname);
+      const { data: exists } = await SB.from('profiles').select('id').eq('nickname', nickname);
       if (exists && exists.length > 0) {
         alert('Никнейм уже занят');
         return;
       }
-      const { data: { user } } = await supabase.auth.getUser();
-      const { error } = await supabase.from('profiles').insert([{ id: user.id, email: user.email, nickname }]);
+      const { data: { user } } = await SB.auth.getUser();
+      const { error } = await SB.from('profiles').insert([{ id: user.id, email: user.email, nickname }]);
       if (error) {
         alert('Ошибка при сохранении никнейма');
       } else {
@@ -206,7 +206,7 @@
 
     // Logout
     document.getElementById('logout-button').addEventListener('click', async () => {
-      await supabase.auth.signOut();
+      await SB.auth.signOut();
     });
 
     // Handle login successful
@@ -214,7 +214,7 @@
       currentUser = user;
       document.getElementById('current-user').textContent = user.email;
       // Fetch or create profile
-      const { data: profile, error } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+      const { data: profile, error } = await SB.from('profiles').select('*').eq('id', user.id).single();
       if (error || !profile) {
         showMain();
         document.getElementById('nickname-view').style.display = 'block';
@@ -246,14 +246,14 @@
 
     // Load list of chats
     async function loadChatList() {
-      const { data: chatMembers } = await supabase.from('chat_members').select('chat_id').eq('member_id', currentUser.id);
+      const { data: chatMembers } = await SB.from('chat_members').select('chat_id').eq('member_id', currentUser.id);
       document.getElementById('chat-list').innerHTML = '';
       for (let cm of chatMembers) {
         const chatId = cm.chat_id;
-        const { data: others } = await supabase.from('chat_members').select('member_id').eq('chat_id', chatId).neq('member_id', currentUser.id);
+        const { data: others } = await SB.from('chat_members').select('member_id').eq('chat_id', chatId).neq('member_id', currentUser.id);
         const otherId = (others && others[0]) ? others[0].member_id : null;
         if (!otherId) continue;
-        const { data: prof } = await supabase.from('profiles').select('nickname').eq('id', otherId).single();
+        const { data: prof } = await SB.from('profiles').select('nickname').eq('id', otherId).single();
         const nickname = prof.nickname;
         const li = document.createElement('li');
         li.textContent = nickname;
@@ -277,24 +277,24 @@
       document.getElementById('chat-list-view').style.display = 'none';
       document.getElementById('user-search-view').style.display = 'none';
       document.getElementById('chat-view').style.display = 'flex';
-      if (messageChannel) supabase.removeChannel(messageChannel);
-      if (reactionChannel) supabase.removeChannel(reactionChannel);
+      if (messageChannel) SB.removeChannel(messageChannel);
+      if (reactionChannel) SB.removeChannel(reactionChannel);
       loadMessages();
     }
 
     // Load or create chat by userId
     async function getOrCreateChat(otherId) {
-      const { data: chats1 } = await supabase.from('chat_members').select('chat_id').eq('member_id', currentUser.id);
-      const { data: chats2 } = await supabase.from('chat_members').select('chat_id').eq('member_id', otherId);
+      const { data: chats1 } = await SB.from('chat_members').select('chat_id').eq('member_id', currentUser.id);
+      const { data: chats2 } = await SB.from('chat_members').select('chat_id').eq('member_id', otherId);
       const ids1 = chats1.map(c => c.chat_id);
       const ids2 = chats2.map(c => c.chat_id);
       const common = ids1.filter(id => ids2.includes(id));
       if (common.length > 0) {
         return common[0];
       } else {
-        const { data: newChat } = await supabase.from('chats').insert([{}]).select('id').single();
+        const { data: newChat } = await SB.from('chats').insert([{}]).select('id').single();
         const newChatId = newChat.id;
-        await supabase.from('chat_members').insert([
+        await SB.from('chat_members').insert([
           { chat_id: newChatId, member_id: currentUser.id },
           { chat_id: newChatId, member_id: otherId }
         ]);
@@ -321,7 +321,7 @@
         if (!term) return;
         let query = term;
         if (!query.startsWith('@')) query = '@' + query;
-        const { data: users } = await supabase.from('profiles').select('id,nickname').ilike('nickname', '%' + query + '%');
+        const { data: users } = await SB.from('profiles').select('id,nickname').ilike('nickname', '%' + query + '%');
         const ul = document.getElementById('search-results');
         ul.innerHTML = '';
         users.forEach(user => {
@@ -349,7 +349,7 @@
     // Load messages for current chat
     async function loadMessages() {
       if (!currentChatId) return;
-      const { data: messages } = await supabase.from('messages').select('*').eq('chat_id', currentChatId).order('created_at', { ascending: true });
+      const { data: messages } = await SB.from('messages').select('*').eq('chat_id', currentChatId).order('created_at', { ascending: true });
       currentMessages = messages;
       document.getElementById('messages').innerHTML = '';
       if (messages) {
@@ -360,13 +360,13 @@
       }
       const messageIds = messages.map(m => m.id);
       if (messageIds.length > 0) {
-        const { data: reactions } = await supabase.from('message_reactions').select('*').in('message_id', messageIds);
+        const { data: reactions } = await SB.from('message_reactions').select('*').in('message_id', messageIds);
         reactions.forEach(r => {
           updateReactionUI(r);
         });
       }
       // Subscribe to new messages
-      messageChannel = supabase.channel(`messages:${currentChatId}`)
+      messageChannel = SB.channel(`messages:${currentChatId}`)
         .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `chat_id=eq.${currentChatId}` }, (payload) => {
           const newMsg = payload.new;
           addMessageToUI(newMsg);
@@ -377,7 +377,7 @@
         })
         .subscribe();
       // Subscribe to reactions
-      reactionChannel = supabase.channel(`reactions:${currentChatId}`)
+      reactionChannel = SB.channel(`reactions:${currentChatId}`)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'message_reactions' }, (payload) => {
           if (payload.new && !payload.old) {
             updateReactionUI(payload.new);
@@ -424,15 +424,15 @@
 
     // Handle reaction click
     async function reactToMessage(messageId, emoji) {
-      const existing = await supabase.from('message_reactions').select('*').eq('message_id', messageId).eq('user_id', currentUser.id).single();
+      const existing = await SB.from('message_reactions').select('*').eq('message_id', messageId).eq('user_id', currentUser.id).single();
       if (existing.data) {
         if (existing.data.reaction === emoji) {
-          await supabase.from('message_reactions').delete().eq('message_id', messageId).eq('user_id', currentUser.id);
+          await SB.from('message_reactions').delete().eq('message_id', messageId).eq('user_id', currentUser.id);
         } else {
-          await supabase.from('message_reactions').upsert({ message_id: messageId, user_id: currentUser.id, reaction: emoji });
+          await SB.from('message_reactions').upsert({ message_id: messageId, user_id: currentUser.id, reaction: emoji });
         }
       } else {
-        await supabase.from('message_reactions').insert({ message_id: messageId, user_id: currentUser.id, reaction: emoji });
+        await SB.from('message_reactions').insert({ message_id: messageId, user_id: currentUser.id, reaction: emoji });
       }
     }
 
@@ -454,7 +454,7 @@
     document.getElementById('send-button').addEventListener('click', async () => {
       const text = document.getElementById('message-input').value;
       if (text && currentChatId) {
-        await supabase.from('messages').insert([{ chat_id: currentChatId, sender_id: currentUser.id, text }]);
+        await SB.from('messages').insert([{ chat_id: currentChatId, sender_id: currentUser.id, text }]);
         document.getElementById('message-input').value = '';
       }
     });
@@ -465,7 +465,7 @@
         e.preventDefault();
         const text = document.getElementById('message-input').value;
         if (text && currentChatId) {
-          await supabase.from('messages').insert([{ chat_id: currentChatId, sender_id: currentUser.id, text }]);
+          await SB.from('messages').insert([{ chat_id: currentChatId, sender_id: currentUser.id, text }]);
           document.getElementById('message-input').value = '';
         }
       }
