@@ -1306,11 +1306,12 @@ async function sendMessage(content) {
         appState.messages.set(chatId, messages);
         appendMessageToUI(optimisticMessage);
         
-        // Отправляем на сервер
+        // ВАЖНО: Отправляем сообщение с user_id из состояния
         const { data, error } = await supabaseClient
             .from('messages')
             .insert({
                 chat_id: chatId,
+                user_id: appState.user.id,  // ← Убедитесь, что это есть!
                 content: messageContent
             })
             .select()
@@ -1318,9 +1319,11 @@ async function sendMessage(content) {
         
         if (error) throw error;
         
-        // Заменяем optimistic сообщение
+        // Заменяем optimistic сообщение реальным
         if (data) {
             const updatedMessages = messages.filter(m => !m.isOptimistic);
+            
+            // Получаем полные данные с профилем пользователя
             const { data: fullMessage, error: fetchError } = await supabaseClient
                 .from('messages')
                 .select(`
@@ -1340,12 +1343,14 @@ async function sendMessage(content) {
             }
         }
         
+        // Обновляем список чатов
         await loadChats();
         
     } catch (error) {
         console.error('Send message error:', error);
-        showError('Failed to send message');
+        showError('Failed to send message: ' + error.message);
         
+        // Откатываем optimistic сообщение
         const messages = appState.messages.get(chatId) || [];
         const filteredMessages = messages.filter(m => !m.isOptimistic);
         appState.messages.set(chatId, filteredMessages);
