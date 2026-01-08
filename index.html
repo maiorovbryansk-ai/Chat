@@ -980,7 +980,6 @@ async function upsertProfile(user) {
                              user.user_metadata.user_name || 
                              user.email.split('@')[0],
                 avatar_url: user.user_metadata.avatar_url,
-                updated_at: new Date().toISOString()
             }, {
                 onConflict: 'id'
             });
@@ -1235,7 +1234,11 @@ async function searchUserByEmail(email) {
         
         if (data && data.length > 0) {
             const user = data[0];
-            showUserResult(user);
+            showUserResult({
+                user_id: user.user_id,
+                email: user.user_email,  // ← вот это исправление!
+                display_name: user.display_name
+            });
         } else {
             showNoResults();
         }
