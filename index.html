@@ -776,21 +776,21 @@
     
     <script>
         // ===================== CONFIGURATION =====================
-        const SUPABASE_URL = 'https://mfvgbozkoepmiyqijgjg.supabase.co'; // Заменить на ваш Supabase URL
-        const SUPABASE_ANON_KEY = 'sb_publishable_5qZGytaJZw5ig_osRnrMbw_lAwHp6Ia'; // Заменить на ваш anon key
+        const SUPABASE_URL = 'https://mfvgbozkoepmiyqijgjg.supabase.co';
+        const SUPABASE_ANON_KEY = 'sb_publishable_5qZGytaJZw5ig_osRnrMbw_lAwHp6Ia';
         
         // ===================== STATE MANAGEMENT =====================
-        let state = {
+        let appState = {
             user: null,
             chats: [],
             activeChatId: null,
-            messages: new Map(), // chatId -> messages array
+            messages: new Map(),
             realtimeSubscription: null,
             profilesCache: new Map()
         };
 
         // ===================== SUPABASE CLIENT =====================
-        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
             auth: {
                 storage: window.localStorage,
                 autoRefreshToken: true,
@@ -838,7 +838,7 @@
 
         async function initApp() {
             // Проверяем сессию при загрузке
-            const { data: { session }, error } = await supabase.auth.getSession();
+            const { data: { session }, error } = await supabaseClient.auth.getSession();
             
             if (error) {
                 showError('Failed to restore session');
@@ -855,7 +855,7 @@
             }
             
             // Слушаем изменения аутентификации
-            supabase.auth.onAuthStateChange(async (event, session) => {
+            supabaseClient.auth.onAuthStateChange(async (event, session) => {
                 if (event === 'SIGNED_IN' && session) {
                     await handleUserSession(session.user);
                 } else if (event === 'SIGNED_OUT') {
@@ -869,7 +869,7 @@
         // ===================== AUTHENTICATION =====================
         async function signInWithProvider(provider) {
             try {
-                const { error } = await supabase.auth.signInWithOAuth({
+                const { error } = await supabaseClient.auth.signInWithOAuth({
                     provider,
                     options: {
                         redirectTo: window.location.origin
@@ -884,7 +884,7 @@
 
         async function handleUserSession(user) {
             try {
-                state.user = user;
+                appState.user = user;
                 
                 // Создаем или обновляем профиль
                 await upsertProfile(user);
@@ -905,7 +905,7 @@
         }
 
         async function upsertProfile(user) {
-            const { error } = await supabase
+            const { error } = await supabaseClient
                 .from('profiles')
                 .upsert({
                     id: user.id,
@@ -923,13 +923,13 @@
         async function handleSignOut() {
             try {
                 // Отписываемся от realtime
-                if (state.realtimeSubscription) {
-                    state.realtimeSubscription.unsubscribe();
-                    state.realtimeSubscription = null;
+                if (appState.realtimeSubscription) {
+                    appState.realtimeSubscription.unsubscribe();
+                    appState.realtimeSubscription = null;
                 }
                 
                 // Очищаем состояние
-                state = {
+                appState = {
                     user: null,
                     chats: [],
                     activeChatId: null,
@@ -962,10 +962,10 @@
                 const urlParams = new URLSearchParams(window.location.search);
                 const chatIdFromUrl = urlParams.get('chat');
                 
-                if (chatIdFromUrl && state.chats.some(chat => chat.id === chatIdFromUrl)) {
+                if (chatIdFromUrl && appState.chats.some(chat => chat.id === chatIdFromUrl)) {
                     await selectChat(chatIdFromUrl);
-                } else if (state.chats.length > 0) {
-                    await selectChat(state.chats[0].id);
+                } else if (appState.chats.length > 0) {
+                    await selectChat(appState.chats[0].id);
                 }
                 
             } catch (error) {
@@ -977,7 +977,7 @@
         async function loadChats() {
             try {
                 // Загружаем чаты пользователя
-                const { data: chats, error } = await supabase
+                const { data: chats, error } = await supabaseClient
                     .from('chats')
                     .select(`
                         *,
@@ -998,10 +998,10 @@
                 if (error) throw error;
                 
                 // Фильтруем и обрабатываем чаты
-                state.chats = await Promise.all(chats.map(async chat => {
+                appState.chats = await Promise.all(chats.map(async chat => {
                     // Получаем другого пользователя в чате (не текущего)
                     const otherMember = chat.other_user
-                        .find(member => member.user.id !== state.user.id);
+                        .find(member => member.user.id !== appState.user.id);
                     
                     // Загружаем аватар для другого пользователя
                     let displayName = 'Unknown User';
@@ -1010,7 +1010,7 @@
                     if (otherMember && otherMember.user) {
                         displayName = otherMember.user.display_name || otherMember.user.email.split('@')[0];
                         email = otherMember.user.email;
-                        state.profilesCache.set(otherMember.user.id, {
+                        appState.profilesCache.set(otherMember.user.id, {
                             display_name: displayName,
                             email: email
                         });
@@ -1038,7 +1038,7 @@
         async function loadMessages(chatId) {
             try {
                 // Загружаем последние 50 сообщений
-                const { data: messages, error } = await supabase
+                const { data: messages, error } = await supabaseClient
                     .from('messages')
                     .select(`
                         *,
@@ -1054,7 +1054,7 @@
                 if (error) throw error;
                 
                 // Сохраняем в кэш
-                state.messages.set(chatId, messages || []);
+                appState.messages.set(chatId, messages || []);
                 
                 // Обновляем UI сообщений
                 updateMessagesUI(chatId);
@@ -1071,12 +1071,12 @@
         // ===================== REAL-TIME =====================
         function subscribeToChatRealtime(chatId) {
             // Отписываемся от предыдущей подписки
-            if (state.realtimeSubscription) {
-                state.realtimeSubscription.unsubscribe();
+            if (appState.realtimeSubscription) {
+                appState.realtimeSubscription.unsubscribe();
             }
             
             // Подписываемся на новые сообщения в этом чате
-            state.realtimeSubscription = supabase
+            appState.realtimeSubscription = supabaseClient
                 .channel(`chat:${chatId}`)
                 .on(
                     'postgres_changes',
@@ -1088,7 +1088,7 @@
                     },
                     async (payload) => {
                         // Получаем полные данные сообщения с профилем пользователя
-                        const { data: message, error } = await supabase
+                        const { data: message, error } = await supabaseClient
                             .from('messages')
                             .select(`
                                 *,
@@ -1102,12 +1102,12 @@
                         
                         if (!error && message) {
                             // Добавляем сообщение в кэш
-                            const messages = state.messages.get(chatId) || [];
+                            const messages = appState.messages.get(chatId) || [];
                             messages.push(message);
-                            state.messages.set(chatId, messages);
+                            appState.messages.set(chatId, messages);
                             
                             // Обновляем UI, если это активный чат
-                            if (state.activeChatId === chatId) {
+                            if (appState.activeChatId === chatId) {
                                 appendMessageToUI(message);
                             }
                             
@@ -1122,7 +1122,7 @@
         // ===================== CHAT MANAGEMENT =====================
         async function selectChat(chatId) {
             try {
-                state.activeChatId = chatId;
+                appState.activeChatId = chatId;
                 
                 // Обновляем URL без перезагрузки страницы
                 const url = new URL(window.location);
@@ -1130,7 +1130,7 @@
                 window.history.pushState({}, '', url);
                 
                 // Находим выбранный чат
-                const chat = state.chats.find(c => c.id === chatId);
+                const chat = appState.chats.find(c => c.id === chatId);
                 if (!chat) return;
                 
                 // Обновляем UI чата
@@ -1160,7 +1160,7 @@
                 showModalLoading(true);
                 hideResults();
                 
-                const { data, error } = await supabase.rpc('search_user_by_email', {
+                const { data, error } = await supabaseClient.rpc('search_user_by_email', {
                     search_email: email
                 });
                 
@@ -1183,7 +1183,7 @@
 
         async function createPrivateChat(otherUserId) {
             try {
-                const { data: chatId, error } = await supabase.rpc('create_private_chat', {
+                const { data: chatId, error } = await supabaseClient.rpc('create_private_chat', {
                     other_user_id: otherUserId
                 });
                 
@@ -1205,9 +1205,9 @@
         }
 
         async function sendMessage(content) {
-            if (!content.trim() || !state.activeChatId) return;
+            if (!content.trim() || !appState.activeChatId) return;
             
-            const chatId = state.activeChatId;
+            const chatId = appState.activeChatId;
             const messageContent = content.trim();
             
             try {
@@ -1215,24 +1215,24 @@
                 const optimisticMessage = {
                     id: `optimistic_${Date.now()}`,
                     chat_id: chatId,
-                    user_id: state.user.id,
+                    user_id: appState.user.id,
                     content: messageContent,
                     created_at: new Date().toISOString(),
                     user: {
-                        display_name: state.user.user_metadata.full_name || state.user.email.split('@')[0],
-                        email: state.user.email
+                        display_name: appState.user.user_metadata.full_name || appState.user.email.split('@')[0],
+                        email: appState.user.email
                     },
                     isOptimistic: true
                 };
                 
                 // Добавляем optimistic сообщение
-                const messages = state.messages.get(chatId) || [];
+                const messages = appState.messages.get(chatId) || [];
                 messages.push(optimisticMessage);
-                state.messages.set(chatId, messages);
+                appState.messages.set(chatId, messages);
                 appendMessageToUI(optimisticMessage);
                 
                 // Отправляем на сервер
-                const { data, error } = await supabase
+                const { data, error } = await supabaseClient
                     .from('messages')
                     .insert({
                         chat_id: chatId,
@@ -1249,7 +1249,7 @@
                     const updatedMessages = messages.filter(m => !m.isOptimistic);
                     
                     // Получаем полные данные
-                    const { data: fullMessage, error: fetchError } = await supabase
+                    const { data: fullMessage, error: fetchError } = await supabaseClient
                         .from('messages')
                         .select(`
                             *,
@@ -1263,7 +1263,7 @@
                     
                     if (!fetchError && fullMessage) {
                         updatedMessages.push(fullMessage);
-                        state.messages.set(chatId, updatedMessages);
+                        appState.messages.set(chatId, updatedMessages);
                         
                         // Обновляем UI
                         updateMessagesUI(chatId);
@@ -1278,9 +1278,9 @@
                 console.error('Send message error:', error);
                 
                 // Удаляем optimistic сообщение при ошибке
-                const messages = state.messages.get(chatId) || [];
+                const messages = appState.messages.get(chatId) || [];
                 const filteredMessages = messages.filter(m => !m.isOptimistic);
-                state.messages.set(chatId, filteredMessages);
+                appState.messages.set(chatId, filteredMessages);
                 updateMessagesUI(chatId);
             }
         }
@@ -1297,9 +1297,9 @@
         }
 
         function updateUserUI() {
-            if (!state.user) return;
+            if (!appState.user) return;
             
-            const displayName = state.user.user_metadata.full_name || state.user.email.split('@')[0];
+            const displayName = appState.user.user_metadata.full_name || appState.user.email.split('@')[0];
             const initials = displayName
                 .split(' ')
                 .map(n => n[0])
@@ -1311,7 +1311,7 @@
         }
 
         function updateChatsListUI() {
-            if (state.chats.length === 0) {
+            if (appState.chats.length === 0) {
                 elements.chatsList.innerHTML = `
                     <div class="empty-state">
                         <div class="empty-state-icon">💬</div>
@@ -1322,8 +1322,8 @@
                 return;
             }
             
-            elements.chatsList.innerHTML = state.chats.map(chat => `
-                <div class="chat-item ${state.activeChatId === chat.id ? 'active' : ''}" 
+            elements.chatsList.innerHTML = appState.chats.map(chat => `
+                <div class="chat-item ${appState.activeChatId === chat.id ? 'active' : ''}" 
                      data-chat-id="${chat.id}">
                     <div class="chat-avatar">
                         ${getInitials(chat.display_name)}
@@ -1357,7 +1357,7 @@
         }
 
         function updateMessagesUI(chatId) {
-            const messages = state.messages.get(chatId) || [];
+            const messages = appState.messages.get(chatId) || [];
             
             if (messages.length === 0) {
                 elements.messagesContainer.innerHTML = `
@@ -1385,7 +1385,7 @@
         }
 
         function createMessageElement(message) {
-            const isOwn = message.user_id === state.user?.id;
+            const isOwn = message.user_id === appState.user?.id;
             const senderName = message.user?.display_name || 'Unknown';
             const time = formatTime(message.created_at, true);
             
@@ -1517,7 +1517,7 @@
             // Аутентификация
             elements.googleLogin.addEventListener('click', () => signInWithProvider('google'));
             elements.githubLogin.addEventListener('click', () => signInWithProvider('github'));
-            elements.logoutBtn.addEventListener('click', () => supabase.auth.signOut());
+            elements.logoutBtn.addEventListener('click', () => supabaseClient.auth.signOut());
             
             // Новый чат
             elements.newChatBtn.addEventListener('click', openNewChatModal);
@@ -1573,7 +1573,7 @@
             window.addEventListener('popstate', async () => {
                 const urlParams = new URLSearchParams(window.location.search);
                 const chatId = urlParams.get('chat');
-                if (chatId && chatId !== state.activeChatId) {
+                if (chatId && chatId !== appState.activeChatId) {
                     await selectChat(chatId);
                 }
             });
