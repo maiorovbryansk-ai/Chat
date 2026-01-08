@@ -1236,108 +1236,130 @@ async function updateChatLastMessage(chatId, lastMessage, lastMessageTime) {
 function subscribeToChatRealtime(chatId) {
     // Отписываемся от предыдущей подписки
     if (appState.realtimeSubscription) {
-        console.log('Unsubscribing from previous subscription');
+        console.log('Removing previous subscription');
         supabaseClient.removeChannel(appState.realtimeSubscription);
         appState.realtimeSubscription = null;
     }
     
-    console.log('Creating new realtime subscription for chat:', chatId);
+    console.log('Setting up realtime for chat:', chatId);
     
-    // Создаем канал с уникальным именем
-    const channelName = `chat-${chatId}-${Date.now()}`;
-    const channel = supabaseClient.channel(channelName);
-    
-    // Настраиваем подписку на ВСТАВКИ в таблицу messages
-    channel.on(
-        'postgres_changes',
-        {
-            event: 'INSERT',
-            schema: 'public',
-            table: 'messages',
-            filter: `chat_id=eq.${chatId}`
-        },
-        async (payload) => {
-            console.log('Realtime: New message payload:', payload);
-            
-            try {
-                // Получаем полные данные сообщения с профилем пользователя
-                const { data: message, error } = await supabaseClient
-                    .from('messages')
-                    .select(`
-                        *,
-                        user:profiles (
-                            id,
-                            display_name,
-                            email
-                        )
-                    `)
-                    .eq('id', payload.new.id)
-                    .single();
-                
-                if (error) {
-                    console.error('Error fetching new message details:', error);
-                    return;
-                }
-                
-                if (message) {
-                    console.log('New message received:', message);
+    try {
+        // Создаем простую подписку без сложных callback
+        const channel = supabaseClient
+            .channel(`chat_${chatId}`)
+            .on(
+                'postgres_changes',
+                {
+                    event: 'INSERT',
+                    schema: 'public',
+                    table: 'messages',
+                    filter: `chat_id=eq.${chatId}`
+                },
+                (payload) => {
+                    console.log('Realtime INSERT event:', payload);
                     
-                    // Кэшируем профиль пользователя
-                    if (message.user) {
-                        appState.profilesCache.set(message.user.id, {
-                            display_name: message.user.display_name,
-                            email: message.user.email
-                        });
-                    }
-                    
-                    // Добавляем сообщение в кэш
-                    const messages = appState.messages.get(chatId) || [];
-                    
-                    // Проверяем, нет ли уже такого сообщения (дубликаты)
-                    if (!messages.some(m => m.id === message.id)) {
-                        messages.push(message);
-                        appState.messages.set(chatId, messages);
-                        
-                        // Обновляем UI, если это активный чат
-                        if (appState.activeChatId === chatId) {
-                            console.log('Appending new message to UI');
-                            appendMessageToUI(message);
-                        }
-                        
-                        // Обновляем список чатов (чтобы обновить последнее сообщение)
-                        await updateChatLastMessage(chatId, message.content, message.created_at);
+                    // Немедленно обновляем UI с оптимистичным сообщением
+                    if (payload.new) {
+                        handleNewMessage(payload.new, chatId);
                     }
                 }
-            } catch (fetchError) {
-                console.error('Error in realtime handler:', fetchError);
-            }
-        }
-    )
-    .on('system', (event) => {
-        console.log('Realtime system event:', event);
-    })
-    .subscribe((status) => {
-        console.log(`Realtime subscription status for ${channelName}:`, status);
+            )
+            .subscribe((status, err) => {
+                console.log(`Realtime subscription status: ${status}`);
+                if (err) console.error('Realtime error:', err);
+                
+                if (status === 'SUBSCRIBED') {
+                    console.log('✅ Successfully subscribed to realtime');
+                }
+            });
         
-        if (status === 'SUBSCRIBED') {
-            console.log('✅ Successfully subscribed to realtime updates for chat:', chatId);
-        } else if (status === 'CHANNEL_ERROR') {
-            console.error('❌ Realtime channel error');
+        appState.realtimeSubscription = channel;
+        
+    } catch (error) {
+        console.error('Error setting up realtime:', error);
+    }
+}
+
+// Новая функция для обработки сообщений
+async function handleNewMessage(messageData, chatId) {
+    try {
+        console.log('Handling new message:', messageData);
+        
+        // Получаем полные данные сообщения
+        const { data: fullMessage, error } = await supabaseClient
+            .from('messages')
+            .select(`
+                *,
+                user:profiles (
+                    id,
+                    display_name,
+                    email
+                )
+            `)
+            .eq('id', messageData.id)
+            .single();
+        
+        if (error) {
+            console.error('Error fetching message details:', error);
             
-            // Пытаемся переподписаться через 3 секунды
-            setTimeout(() => {
-                if (appState.activeChatId === chatId) {
-                    console.log('Attempting to resubscribe...');
-                    subscribeToChatRealtime(chatId);
+            // Если не можем получить полные данные, используем что есть
+            const fallbackMessage = {
+                id: messageData.id,
+                chat_id: chatId,
+                user_id: messageData.user_id,
+                content: messageData.content,
+                created_at: messageData.created_at,
+                user: {
+                    display_name: 'User',
+                    email: ''
                 }
-            }, 3000);
-        } else if (status === 'TIMED_OUT') {
-            console.error('⏰ Realtime timeout');
+            };
+            
+            addMessageToStateAndUI(fallbackMessage, chatId);
+            return;
         }
-    });
+        
+        if (fullMessage) {
+            addMessageToStateAndUI(fullMessage, chatId);
+        }
+        
+    } catch (error) {
+        console.error('Error in handleNewMessage:', error);
+    }
+}
+
+function addMessageToStateAndUI(message, chatId) {
+    // Добавляем в состояние
+    const messages = appState.messages.get(chatId) || [];
     
-    // Сохраняем подписку в состоянии
-    appState.realtimeSubscription = channel;
+    // Проверяем дубликаты
+    if (!messages.some(m => m.id === message.id)) {
+        messages.push(message);
+        appState.messages.set(chatId, messages);
+        
+        // Обновляем UI если это активный чат
+        if (appState.activeChatId === chatId) {
+            appendMessageToUI(message);
+        }
+        
+        // Обновляем список чатов
+        updateChatListAfterNewMessage(chatId, message);
+    }
+}
+
+function updateChatListAfterNewMessage(chatId, message) {
+    const chatIndex = appState.chats.findIndex(c => c.id === chatId);
+    if (chatIndex !== -1) {
+        // Обновляем последнее сообщение
+        appState.chats[chatIndex].last_message = message.content;
+        appState.chats[chatIndex].last_message_at = message.created_at;
+        
+        // Перемещаем в начало
+        const [updatedChat] = appState.chats.splice(chatIndex, 1);
+        appState.chats.unshift(updatedChat);
+        
+        updateChatsListUI();
+    }
 }
 // ===================== CHAT MANAGEMENT =====================
 async function selectChat(chatId) {
@@ -1581,10 +1603,10 @@ async function sendMessage(content) {
     
     const chatId = appState.activeChatId;
     const messageContent = content.trim();
-    const tempId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const tempId = `temp_${Date.now()}`;
     
     try {
-        // Optimistic UI: сразу показываем сообщение
+        // 1. Optimistic UI - сразу показываем сообщение
         const optimisticMessage = {
             id: tempId,
             chat_id: chatId,
@@ -1600,13 +1622,10 @@ async function sendMessage(content) {
             isOptimistic: true
         };
         
-        // Добавляем optimistic сообщение
-        const messages = appState.messages.get(chatId) || [];
-        messages.push(optimisticMessage);
-        appState.messages.set(chatId, messages);
+        // Добавляем в UI
         appendMessageToUI(optimisticMessage);
         
-        // Отправляем на сервер
+        // 2. Отправляем на сервер
         const { data, error } = await supabaseClient
             .from('messages')
             .insert({
@@ -1622,42 +1641,38 @@ async function sendMessage(content) {
             throw error;
         }
         
-        console.log('Message sent successfully, server response:', data);
+        console.log('Message sent, server response:', data);
         
-        // Real-time должен обработать новое сообщение автоматически
-        // Удаляем optimistic сообщение через 2 секунды (на случай если real-time не сработал)
+        // 3. Real-time подписка должна автоматически обновить сообщение
+        // Удаляем оптимистичное сообщение через 3 секунды если real-time не сработал
         setTimeout(() => {
-            const currentMessages = appState.messages.get(chatId) || [];
-            const optimisticRemoved = currentMessages.filter(m => m.id !== tempId);
+            const messages = appState.messages.get(chatId) || [];
+            const hasRealMessage = messages.some(m => 
+                !m.isOptimistic && m.content === messageContent
+            );
             
-            // Если сообщение все еще оптимистическое (real-time не пришел)
-            if (optimisticRemoved.length < currentMessages.length) {
-                appState.messages.set(chatId, optimisticRemoved);
-                
-                // Загружаем сообщения заново как fallback
-                if (appState.activeChatId === chatId) {
-                    loadMessages(chatId);
-                }
+            if (!hasRealMessage) {
+                console.log('Real-time not triggered, reloading messages...');
+                loadMessages(chatId);
             }
-        }, 2000);
+        }, 3000);
         
-        // Очищаем поле ввода
+        // 4. Очищаем поле ввода
         elements.messageInput.value = '';
         autoResizeTextarea(elements.messageInput);
         elements.sendBtn.disabled = true;
         
     } catch (error) {
         console.error('Send message error:', error);
-        showError('Failed to send message: ' + error.message);
+        showError('Failed to send message');
         
-        // Удаляем optimistic сообщение при ошибке
-        const messages = appState.messages.get(chatId) || [];
-        const filteredMessages = messages.filter(m => m.id !== tempId);
-        appState.messages.set(chatId, filteredMessages);
-        
-        if (appState.activeChatId === chatId) {
-            updateMessagesUI(chatId);
-        }
+        // Удаляем оптимистичное сообщение
+        const messages = elements.messagesContainer.querySelectorAll('.message');
+        messages.forEach(el => {
+            if (el.dataset.messageId === tempId) {
+                el.remove();
+            }
+        });
     }
 }
 // ===================== UI UPDATES =====================
@@ -1759,7 +1774,9 @@ function appendMessageToUI(message) {
     const existingMessages = Array.from(elements.messagesContainer.querySelectorAll('.message'));
     const messageExists = existingMessages.some(el => {
         const messageId = el.dataset.messageId;
-        return messageId === message.id || messageId === message.id?.replace('temp_', '');
+        return messageId === message.id || 
+               (message.id && messageId === message.id.toString()) ||
+               (message.id && messageId === message.id.replace('temp_', ''));
     });
     
     if (messageExists) {
@@ -1767,46 +1784,76 @@ function appendMessageToUI(message) {
         return;
     }
     
-    const messageElement = createMessageElement(message);
-    const div = document.createElement('div');
-    div.innerHTML = messageElement;
-    const newElement = div.firstChild;
-    
-    // Добавляем data-attribute для идентификации
-    newElement.dataset.messageId = message.id;
-    
-    elements.messagesContainer.appendChild(newElement);
-    scrollToBottom();
+    try {
+        const messageElement = createMessageElement(message);
+        
+        if (!messageElement || messageElement.trim() === '') {
+            console.error('Empty message element generated for:', message);
+            return;
+        }
+        
+        const div = document.createElement('div');
+        div.innerHTML = messageElement.trim();
+        
+        if (!div.firstChild) {
+            console.error('No child element created from:', messageElement);
+            return;
+        }
+        
+        const newElement = div.firstChild;
+        
+        // Безопасно устанавливаем dataset
+        if (message.id) {
+            newElement.dataset.messageId = String(message.id);
+        } else if (message.isOptimistic) {
+            newElement.dataset.messageId = `optimistic_${Date.now()}`;
+        }
+        
+        elements.messagesContainer.appendChild(newElement);
+        scrollToBottom();
+        
+    } catch (error) {
+        console.error('Error appending message to UI:', error, 'Message:', message);
+    }
 }
 
 function createMessageElement(message) {
-    const isOwn = message.user_id === appState.user?.id;
-    
-    // Получаем имя отправителя из кэша или из данных сообщения
-    let senderName = 'Unknown';
-    if (message.user) {
-        senderName = message.user.display_name || 
-                    message.user.email?.split('@')[0] || 
-                    'Unknown';
-    } else if (appState.profilesCache.has(message.user_id)) {
-        const profile = appState.profilesCache.get(message.user_id);
-        senderName = profile.display_name || 
-                    profile.email?.split('@')[0] || 
-                    'Unknown';
+    try {
+        const isOwn = message.user_id === appState.user?.id;
+        
+        // Получаем имя отправителя
+        let senderName = 'User';
+        if (message.user) {
+            senderName = message.user.display_name || 
+                        message.user.email?.split('@')[0] || 
+                        'User';
+        } else if (message.isOptimistic) {
+            senderName = appState.user.user_metadata.full_name || 
+                        appState.user.user_metadata.user_name || 
+                        appState.user.email.split('@')[0];
+        }
+        
+        // Форматируем время
+        const time = formatTime(message.created_at, true);
+        
+        // Экранируем контент
+        const content = message.isOptimistic ? 
+            `<span style="opacity:0.7">${escapeHtml(message.content)} (sending...)</span>` : 
+            escapeHtml(message.content);
+        
+        // Создаем HTML
+        return `
+            <div class="message ${isOwn ? 'message-outgoing' : 'message-incoming'}">
+                ${!isOwn ? `<div class="message-sender">${escapeHtml(senderName)}</div>` : ''}
+                <div class="message-bubble">${content}</div>
+                <div class="message-time">${time}</div>
+            </div>
+        `;
+        
+    } catch (error) {
+        console.error('Error creating message element:', error, message);
+        return '<div class="message">Error displaying message</div>';
     }
-    
-    const time = formatTime(message.created_at, true);
-    const content = message.isOptimistic ? 
-        `<em>${escapeHtml(message.content)} (sending...)</em>` : 
-        escapeHtml(message.content);
-    
-    return `
-        <div class="message ${isOwn ? 'message-outgoing' : 'message-incoming'}">
-            ${!isOwn ? `<div class="message-sender">${escapeHtml(senderName)}</div>` : ''}
-            <div class="message-bubble">${content}</div>
-            <div class="message-time">${time}</div>
-        </div>
-    `;
 }
 
 // ===================== MODAL MANAGEMENT =====================
