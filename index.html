@@ -1051,30 +1051,37 @@ async function loadChats() {
     try {
         console.log('Loading chats for user:', appState.user.id);
         
-        // 1. Получаем все чаты пользователя
-        const { data: userChats, error: chatsError } = await supabaseClient
+        // 1. Получаем ID всех чатов пользователя
+        const { data: chatMembers, error: membersError } = await supabaseClient
             .from('chat_members')
-            .select(`
-                chat_id,
-                chats (
-                    id,
-                    created_at,
-                    last_message_at,
-                    is_group
-                )
-            `)
+            .select('chat_id')
             .eq('user_id', appState.user.id);
+        
+        if (membersError) throw membersError;
+        
+        if (!chatMembers || chatMembers.length === 0) {
+            appState.chats = [];
+            updateChatsListUI();
+            return;
+        }
+        
+        const chatIds = chatMembers.map(cm => cm.chat_id);
+        
+        // 2. Получаем данные чатов
+        const { data: chats, error: chatsError } = await supabaseClient
+            .from('chats')
+            .select('*')
+            .in('id', chatIds)
+            .order('last_message_at', { ascending: false });
         
         if (chatsError) throw chatsError;
         
         appState.chats = [];
         
-        // 2. Для каждого чата получаем информацию
-        for (const userChat of userChats) {
-            const chat = userChat.chats;
-            
-            // Получаем ДРУГОГО участника чата (не текущего пользователя)
-            const { data: otherMembers, error: membersError } = await supabaseClient
+        // 3. Для каждого чата получаем информацию о другом участнике
+        for (const chat of chats) {
+            // Получаем другого участника чата
+            const { data: otherMembers, error: otherError } = await supabaseClient
                 .from('chat_members')
                 .select(`
                     user_id,
@@ -1088,8 +1095,8 @@ async function loadChats() {
                 .neq('user_id', appState.user.id)
                 .limit(1);
             
-            if (membersError) {
-                console.error('Error loading other members:', membersError);
+            if (otherError) {
+                console.error('Error loading other members for chat', chat.id, ':', otherError);
                 continue;
             }
             
@@ -1112,7 +1119,6 @@ async function loadChats() {
                     .order('created_at', { ascending: false })
                     .limit(1);
                 
-                // Формируем имя для отображения
                 let displayName = 'Unknown User';
                 if (otherUser) {
                     displayName = otherUser.display_name || 
@@ -1127,17 +1133,23 @@ async function loadChats() {
                     last_message: lastMessage?.[0]?.content || 'No messages yet',
                     last_message_at: lastMessage?.[0]?.created_at || chat.created_at,
                     is_group: chat.is_group,
-                    other_user_id: otherUser?.id // Сохраняем ID другого пользователя
+                    other_user_id: otherUser?.id
+                });
+            } else {
+                // Если нет других участников (может быть групповой чат или ошибка)
+                appState.chats.push({
+                    id: chat.id,
+                    display_name: 'Group Chat',
+                    email: '',
+                    last_message: 'No messages yet',
+                    last_message_at: chat.created_at,
+                    is_group: chat.is_group,
+                    other_user_id: null
                 });
             }
         }
         
-        // 3. Сортируем по времени последнего сообщения
-        appState.chats.sort((a, b) => 
-            new Date(b.last_message_at) - new Date(a.last_message_at)
-        );
-        
-        console.log('Loaded chats:', appState.chats);
+        console.log('Loaded', appState.chats.length, 'chats:', appState.chats);
         updateChatsListUI();
         
     } catch (error) {
@@ -1152,6 +1164,22 @@ async function loadChats() {
         `;
     }
 }
+  function addChatToList(chatData) {
+    // Проверяем, нет ли уже такого чата
+    if (appState.chats.some(chat => chat.id === chatData.id)) {
+        console.log('Chat already in list:', chatData.id);
+        return;
+    }
+    
+    // Добавляем чат в начало списка
+    appState.chats.unshift(chatData);
+    
+    // Обновляем UI
+    updateChatsListUI();
+    
+    console.log('Chat added to list:', chatData);
+}      
+       
 async function loadMessages(chatId) {
     try {
         console.log('Loading messages for chat:', chatId);
@@ -1354,19 +1382,80 @@ async function searchUserByEmail(email) {
 
 async function createPrivateChat(otherUserId) {
     try {
+        console.log('Creating private chat with user:', otherUserId);
+        
         const { data: chatId, error } = await supabaseClient.rpc('create_private_chat', {
             other_user_id: otherUserId
         });
         
-        if (error) throw error;
+        if (error) {
+            console.error('RPC error:', error);
+            throw error;
+        }
         
-        await loadChats();
+        console.log('Chat created with ID:', chatId);
+        
+        // ВАЖНО: Нужно сразу получить данные нового чата
+        const { data: chatData, error: chatError } = await supabaseClient
+            .from('chats')
+            .select(`
+                *,
+                chat_members!inner (
+                    user:profiles!inner (
+                        id,
+                        display_name,
+                        email
+                    )
+                )
+            `)
+            .eq('id', chatId)
+            .single();
+        
+        if (chatError) {
+            console.error('Error fetching chat data:', chatError);
+        }
+        
+        // Закрываем модальное окно
         closeNewChatModal();
-        await selectChat(chatId);
+        
+        // ОБНОВЛЯЕМ СПИСОК ЧАТОВ перед выбором
+        await loadChats();
+        
+        // Выбираем новый чат
+        if (appState.chats.some(chat => chat.id === chatId)) {
+            await selectChat(chatId);
+        } else {
+            // Если чат все еще не в списке, создаем его вручную
+            console.log('Chat not in list, creating manually...');
+            
+            if (chatData) {
+                // Находим другого пользователя
+                const otherMember = chatData.chat_members
+                    .find(member => member.user.id !== appState.user.id);
+                
+                if (otherMember) {
+                    const otherUser = otherMember.user;
+                    const newChat = {
+                        id: chatId,
+                        display_name: otherUser.display_name || 
+                                     otherUser.email.split('@')[0] || 
+                                     'Unknown User',
+                        email: otherUser.email || '',
+                        last_message: 'No messages yet',
+                        last_message_at: chatData.created_at,
+                        is_group: false
+                    };
+                    
+                    appState.chats.unshift(newChat);
+                    updateChatsListUI();
+                    await selectChat(chatId);
+                }
+            }
+        }
         
     } catch (error) {
         console.error('Create chat error:', error);
-        showError('Failed to create chat');
+        showError('Failed to create chat: ' + error.message);
     }
 }
 
