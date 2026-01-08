@@ -1154,11 +1154,15 @@ async function loadChats() {
 }
 async function loadMessages(chatId) {
     try {
+        console.log('Loading messages for chat:', chatId);
+        
+        // Загружаем сообщения с профилями пользователей
         const { data: messages, error } = await supabaseClient
             .from('messages')
             .select(`
                 *,
-                user:profiles (
+                user:profiles!messages_user_id_fkey (
+                    id,
                     display_name,
                     email
                 )
@@ -1169,8 +1173,20 @@ async function loadMessages(chatId) {
         
         if (error) throw error;
         
+        // Кэшируем профили из сообщений
+        messages.forEach(message => {
+            if (message.user) {
+                appState.profilesCache.set(message.user.id, {
+                    display_name: message.user.display_name,
+                    email: message.user.email
+                });
+            }
+        });
+        
         appState.messages.set(chatId, messages || []);
         updateMessagesUI(chatId);
+        
+        // Подписываемся на realtime
         subscribeToChatRealtime(chatId);
         
     } catch (error) {
@@ -1178,12 +1194,14 @@ async function loadMessages(chatId) {
         throw error;
     }
 }
-
-// ===================== REAL-TIME =====================
 function subscribeToChatRealtime(chatId) {
+    // Отписываемся от предыдущей подписки
     if (appState.realtimeSubscription) {
         appState.realtimeSubscription.unsubscribe();
+        appState.realtimeSubscription = null;
     }
+    
+    console.log('Subscribing to realtime for chat:', chatId);
     
     appState.realtimeSubscription = supabaseClient
         .channel(`chat:${chatId}`)
@@ -1196,69 +1214,114 @@ function subscribeToChatRealtime(chatId) {
                 filter: `chat_id=eq.${chatId}`
             },
             async (payload) => {
-                console.log('New message received:', payload.new.id);
+                console.log('Realtime: New message received:', payload.new.id);
                 
-                const { data: message, error } = await supabaseClient
-                    .from('messages')
-                    .select(`
-                        *,
-                        user:profiles (
-                            display_name,
-                            email
-                        )
-                    `)
-                    .eq('id', payload.new.id)
-                    .single();
-                
-                if (!error && message) {
-                    const messages = appState.messages.get(chatId) || [];
-                    messages.push(message);
-                    appState.messages.set(chatId, messages);
+                try {
+                    // Получаем полные данные сообщения с профилем пользователя
+                    const { data: message, error } = await supabaseClient
+                        .from('messages')
+                        .select(`
+                            *,
+                            user:profiles!messages_user_id_fkey (
+                                id,
+                                display_name,
+                                email
+                            )
+                        `)
+                        .eq('id', payload.new.id)
+                        .single();
                     
-                    if (appState.activeChatId === chatId) {
-                        appendMessageToUI(message);
+                    if (error) {
+                        console.error('Error fetching new message:', error);
+                        return;
                     }
                     
-                    // Обновляем список чатов
-                    await loadChats();
+                    if (message) {
+                        // Кэшируем профиль пользователя
+                        if (message.user) {
+                            appState.profilesCache.set(message.user.id, {
+                                display_name: message.user.display_name,
+                                email: message.user.email
+                            });
+                        }
+                        
+                        // Добавляем сообщение в кэш
+                        const messages = appState.messages.get(chatId) || [];
+                        messages.push(message);
+                        appState.messages.set(chatId, messages);
+                        
+                        // Обновляем UI, если это активный чат
+                        if (appState.activeChatId === chatId) {
+                            appendMessageToUI(message);
+                        }
+                        
+                        // Обновляем список чатов (чтобы показать последнее сообщение)
+                        await loadChats();
+                    }
+                } catch (fetchError) {
+                    console.error('Error in realtime handler:', fetchError);
                 }
             }
         )
         .subscribe((status) => {
-            console.log(`Realtime subscription status for chat ${chatId}:`, status);
+            console.log(`Realtime subscription status:`, status);
+            
+            if (status === 'SUBSCRIBED') {
+                console.log('Successfully subscribed to realtime updates');
+            } else if (status === 'CHANNEL_ERROR') {
+                console.error('Realtime channel error');
+                showError('Connection error. Trying to reconnect...');
+                
+                // Пытаемся переподписаться через 5 секунд
+                setTimeout(() => {
+                    if (appState.activeChatId === chatId) {
+                        subscribeToChatRealtime(chatId);
+                    }
+                }, 5000);
+            }
         });
 }
-
 // ===================== CHAT MANAGEMENT =====================
 async function selectChat(chatId) {
     try {
         console.log('Selecting chat:', chatId);
         appState.activeChatId = chatId;
         
+        // Обновляем URL
         const url = new URL(window.location);
         url.searchParams.set('chat', chatId);
         window.history.pushState({}, '', url);
         
+        // Находим выбранный чат
         const chat = appState.chats.find(c => c.id === chatId);
-        if (!chat) return;
+        if (!chat) {
+            console.error('Chat not found:', chatId);
+            return;
+        }
         
+        console.log('Selected chat data:', chat);
+        
+        // Обновляем UI чата
         updateChatUI(chat);
+        
+        // Загружаем сообщения
         await loadMessages(chatId);
         
+        // Показываем поле ввода
         elements.messageInputContainer.style.display = 'block';
         elements.messageInput.disabled = false;
-        elements.sendBtn.disabled = false;
+        elements.sendBtn.disabled = true; // Начинаем с disabled
         
+        // Фокусируемся на поле ввода
         setTimeout(() => {
             elements.messageInput.focus();
         }, 100);
         
     } catch (error) {
         console.error('Select chat error:', error);
-        showError('Failed to select chat');
+        showError('Failed to select chat: ' + error.message);
     }
 }
-
 async function searchUserByEmail(email) {
     try {
         showModalLoading(true);
@@ -1489,13 +1552,29 @@ function appendMessageToUI(message) {
 
 function createMessageElement(message) {
     const isOwn = message.user_id === appState.user?.id;
-    const senderName = message.user?.display_name || 'Unknown';
+    
+    // Получаем имя отправителя из кэша или из данных сообщения
+    let senderName = 'Unknown';
+    if (message.user) {
+        senderName = message.user.display_name || 
+                    message.user.email?.split('@')[0] || 
+                    'Unknown';
+    } else if (appState.profilesCache.has(message.user_id)) {
+        const profile = appState.profilesCache.get(message.user_id);
+        senderName = profile.display_name || 
+                    profile.email?.split('@')[0] || 
+                    'Unknown';
+    }
+    
     const time = formatTime(message.created_at, true);
+    const content = message.isOptimistic ? 
+        `<em>${escapeHtml(message.content)} (sending...)</em>` : 
+        escapeHtml(message.content);
     
     return `
         <div class="message ${isOwn ? 'message-outgoing' : 'message-incoming'}">
             ${!isOwn ? `<div class="message-sender">${escapeHtml(senderName)}</div>` : ''}
-            <div class="message-bubble">${escapeHtml(message.content)}</div>
+            <div class="message-bubble">${content}</div>
             <div class="message-time">${time}</div>
         </div>
     `;
@@ -1692,6 +1771,19 @@ function setupEventListeners() {
 }
 
 console.log('PING Messenger loaded successfully!');
+console.log('Supabase config:', {
+    url: SUPABASE_URL,
+    hasUser: !!appState.user,
+    userEmail: appState.user?.email,
+    userId: appState.user?.id
+});
+
+// Проверка realtime соединения
+setInterval(() => {
+    if (appState.realtimeSubscription) {
+        console.log('Realtime connection alive for chat:', appState.activeChatId);
+    }
+}, 30000);
     </script>
 </body>
 </html>
