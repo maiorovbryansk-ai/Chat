@@ -100,7 +100,7 @@
   <script>
     const SUPABASE_URL = 'https://ahrfdakfvhyvphsdzwex.SB.co';
     const SUPABASE_ANON_KEY = 'sb_publishable_RLUW9ZE0dl6t46ZVkJXaKA_DpaGNwzv';
-    const SB = SB.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const SB = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     let currentUser = null;
     let currentChatId = null;
