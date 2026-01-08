@@ -1,614 +1,475 @@
-<!doctype html>
-<html lang="ru">
+<!DOCTYPE html>
+<html>
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Messenger</title>
-<link rel="icon" href="data:;base64,iVBORw0KGgo=" />
-<style>
-  :root{
-    --bg:#0f1724;
-    --card:#0b1220;
-    --muted:#94a3b8;
-    --accent:#7c5cff;
-    --text:#e6eef8;
-    --glass: rgba(255,255,255,0.03);
-    --radius:12px;
-    font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
-  }
-  *{box-sizing:border-box}
-  html,body,#app{height:100%;margin:0;background:linear-gradient(180deg,#071025 0%, #061623 100%);color:var(--text)}
-  .app{display:flex;flex-direction:column;height:100vh;padding:16px;gap:12px}
-  .shell{display:grid;grid-template-columns:360px 1fr;gap:16px;height:calc(100vh - 64px)}
-  @media(max-width:800px){ .shell{grid-template-columns:1fr} }
-  .card{background:var(--card);border-radius:var(--radius);padding:12px;box-shadow: 0 6px 18px rgba(2,6,23,0.6);overflow:hidden}
-  .auth-screen{max-width:420px;margin:auto}
-  h1{font-size:20px;margin:0 0 8px 0}
-  small{color:var(--muted)}
-  input,button,textarea{font:inherit}
-  .field{display:flex;flex-direction:column;gap:6px;margin:8px 0}
-  input,textarea{background:var(--glass);border:1px solid rgba(255,255,255,0.04);padding:10px;border-radius:10px;color:var(--text);outline:none}
-  button{background:var(--accent);border:none;color:white;padding:10px 12px;border-radius:10px;cursor:pointer}
-  .btn-ghost{background:transparent;border:1px solid rgba(255,255,255,0.06)}
-  .muted{color:var(--muted);font-size:13px}
-  .chats-list{display:flex;flex-direction:column;height:100%}
-  .chat-item{display:flex;align-items:center;gap:12px;padding:10px;border-radius:10px;cursor:pointer}
-  .chat-item:hover{background:rgba(255,255,255,0.02)}
-  .nick{font-weight:600}
-  .right{margin-left:auto;font-size:12px;color:var(--muted)}
-  .search{display:flex;gap:8px;align-items:center}
-  .messages{display:flex;flex-direction:column;height:100%;gap:12px}
-  .messages-window{flex:1;overflow:auto;padding:12px;border-radius:8px;background:linear-gradient(180deg, rgba(255,255,255,0.01), transparent)}
-  .msg{max-width:70%;padding:10px;border-radius:12px;margin:8px 0;word-break:break-word}
-  .msg.me{margin-left:auto;background:linear-gradient(90deg,var(--accent),#5a45d6);color:white}
-  .msg.other{background:rgba(255,255,255,0.02)}
-  .msg-meta{font-size:12px;color:var(--muted);margin-top:6px;display:flex;gap:8px;align-items:center}
-  .reactions{display:flex;gap:6px;margin-left:6px}
-  .reaction{padding:4px 6px;border-radius:999px;font-size:14px;cursor:pointer;border:1px solid rgba(255,255,255,0.03)}
-  .reaction.active{background:rgba(255,255,255,0.06)}
-  .composer{display:flex;gap:8px;padding-top:8px}
-  .composer input{flex:1}
-  .topbar{display:flex;align-items:center;gap:12px;justify-content:space-between}
-  .empty{display:flex;align-items:center;justify-content:center;height:100%;color:var(--muted)}
-  .logo{font-weight:700;color:var(--accent)}
-  .small{font-size:13px}
-  .notice{background:rgba(124,92,255,0.09);padding:8px;border-radius:8px;color:var(--accent);font-size:13px}
-</style>
-
-<!-- Надёжная загрузка Supabase UMD: сначала jsdelivr, при ошибке — unpkg -->
-<script>
-(function(){
-  function addScript(src){
-    const s = document.createElement('script');
-    s.src = src;
-    s.crossOrigin = 'anonymous';
-    s.async = false;
-    document.head.appendChild(s);
-    return s;
-  }
-  // try jsDelivr first, fallback to unpkg if it errors
-  const s = addScript('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2');
-  s.addEventListener('error', ()=> addScript('https://unpkg.com/@supabase/supabase-js@2'));
-})();
-</script>
+  <meta charset="UTF-8">
+  <title>Messenger</title>
+  <style>
+    body { margin: 0; font-family: Arial, sans-serif; height: 100vh; display: flex; }
+    #auth, #main-view { width: 100%; display: flex; justify-content: center; align-items: center; }
+    #auth > div { width: 300px; }
+    input[type="text"], input[type="password"], input[type="email"] {
+      width: 100%; padding: 8px; margin: 5px 0; box-sizing: border-box;
+    }
+    button { padding: 10px 20px; margin: 5px 0; cursor: pointer; }
+    #main-view { display: none; }
+    #sidebar { width: 300px; border-right: 1px solid #ddd; flex-shrink: 0; display: flex; flex-direction: column; height: 100vh; }
+    #header { padding: 10px; border-bottom: 1px solid #ddd; display: flex; justify-content: space-between; align-items: center; }
+    #chat-list-view, #user-search-view { flex: 1; overflow-y: auto; padding: 10px; }
+    #chat-list { list-style: none; padding: 0; margin: 0; }
+    #chat-list li { padding: 10px; border-bottom: 1px solid #eee; cursor: pointer; }
+    #chat-list li:hover { background: #f5f5f5; }
+    #search-results { list-style: none; padding: 0; margin: 0; }
+    #search-results li { padding: 10px; border-bottom: 1px solid #eee; cursor: pointer; }
+    #search-results li:hover { background: #f5f5f5; }
+    #chat-view { flex: 1; display: flex; flex-direction: column; }
+    #chat-header { padding: 10px; border-bottom: 1px solid #ddd; display: flex; align-items: center; }
+    #messages { flex: 1; padding: 10px; overflow-y: auto; }
+    .message { margin: 5px 0; padding: 10px; border-radius: 8px; max-width: 60%; position: relative; display: inline-block; }
+    .sent { background: #dcf8c6; align-self: flex-end; }
+    .received { background: #fff; align-self: flex-start; }
+    .reaction { cursor: pointer; margin-right: 5px; }
+    .reactions { margin-top: 5px; display: flex; flex-wrap: wrap; }
+    .reaction-count { font-size: 12px; margin-left: 4px; }
+    #message-input-area { padding: 10px; border-top: 1px solid #ddd; display: flex; }
+    #message-input { flex: 1; padding: 8px; }
+    @media (max-width: 600px) {
+      body { display: block; }
+      #sidebar { width: 100%; }
+      #chat-view { display: none; }
+    }
+  </style>
 </head>
 <body>
-<div id="app" class="app">
-  <div class="topbar">
-    <div style="display:flex;align-items:center;gap:12px">
-      <div class="logo">Messenger</div>
-      <div class="small muted">1-на-1, шифрование клиент-клиент не реализовано</div>
-    </div>
-    <div id="authControls"></div>
-  </div>
-
-  <div id="main" class="shell">
-    <!-- Left: chats + search -->
-    <div style="display:flex;flex-direction:column;gap:12px;">
-      <div class="card">
-        <div style="display:flex;gap:8px;align-items:center;">
-          <div style="font-weight:700">Чаты</div>
-          <div class="right muted" id="onlineStatus">offline</div>
-        </div>
-        <div style="margin-top:10px" class="search">
-          <input id="searchInput" placeholder="Искать @nickname" />
-          <button id="searchBtn" class="btn-ghost">Поиск</button>
-        </div>
+  <div id="auth">
+    <div>
+      <div id="login-view">
+        <h2>Вход</h2>
+        <input id="login-email" type="email" placeholder="Email">
+        <input id="login-password" type="password" placeholder="Пароль">
+        <button id="login-button">Войти</button>
+        <p>Нет аккаунта? <a href="#" id="show-signup">Зарегистрироваться</a></p>
       </div>
-
-      <div class="card chats-list" id="chatsListContainer" style="overflow:auto">
-        <!-- chat items -->
+      <div id="signup-view" style="display:none;">
+        <h2>Регистрация</h2>
+        <input id="signup-email" type="email" placeholder="Email">
+        <input id="signup-password" type="password" placeholder="Пароль">
+        <input id="signup-password2" type="password" placeholder="Повторите пароль">
+        <button id="signup-button">Зарегистрироваться</button>
+        <p>Уже есть аккаунт? <a href="#" id="show-login">Войти</a></p>
       </div>
-
-    </div>
-
-    <!-- Right: chat window or auth -->
-    <div style="display:flex;flex-direction:column;gap:12px;">
-      <div id="rightCard" class="card" style="min-height:360px;display:flex;flex-direction:column;">
-        <!-- dynamic screens -->
-        <div id="authScreen" class="auth-screen" style="display:none"></div>
-        <div id="searchScreen" style="display:none"></div>
-        <div id="chatScreen" style="display:none;flex:1;min-height:0"></div>
+      <div id="nickname-view" style="display:none;">
+        <h2>Выберите никнейм</h2>
+        <input id="nickname-input" type="text" placeholder="@nickname">
+        <button id="nickname-button">Сохранить</button>
       </div>
     </div>
   </div>
-</div>
 
-<script type="module">
-/* ----------------- Конфигурация: вставь свои значения ----------------- */
-const SUPABASE_URL = "https://vrwteuyqdthzchaomedz.supabase.co";
-const SUPABASE_ANON_KEY = "sb_publishable_Mg-4TC0gHrK5_VmljEiF5w_O26xyotC";
-/* -------------------------------------------------------------------- */
+  <div id="main-view">
+    <div id="sidebar">
+      <div id="header">
+        <span id="current-user"></span>
+        <button id="logout-button">Выйти</button>
+      </div>
+      <div id="chat-list-view">
+        <h3>Чаты</h3>
+        <ul id="chat-list"></ul>
+        <button id="new-chat-button">Новый чат</button>
+      </div>
+      <div id="user-search-view" style="display:none;">
+        <button id="back-to-chats">← Назад</button>
+        <h3>Поиск пользователей</h3>
+        <input id="search-nickname" type="text" placeholder="@никнейм">
+        <ul id="search-results"></ul>
+      </div>
+    </div>
+    <div id="chat-view">
+      <div id="chat-header">
+        <button id="back-to-chat-list">← Назад</button>
+        <span id="chat-with"></span>
+      </div>
+      <div id="messages"></div>
+      <div id="message-input-area">
+        <input id="message-input" type="text" placeholder="Введите сообщение...">
+        <button id="send-button">Отправить</button>
+      </div>
+    </div>
+  </div>
 
-/*
-  Вместо ESM-импорта используем UMD, загруженный выше.
-  Ждём, пока глобальный объект (window.supabase) станет доступен.
-*/
-async function initSupabaseClient(){
-  const timeout = 7000;
-  const start = Date.now();
-  while(!(window.supabase && (window.supabase.createClient || window.supabase.createClient === window.supabase.createClient))){
-    if (Date.now() - start > timeout) throw new Error('Не удалось загрузить Supabase SDK с CDN (jsdelivr/unpkg).');
-    await new Promise(r => setTimeout(r, 50));
-  }
-  // UMD предоставляет глобальную переменную `supabase` с методом createClient
-  const createClient = window.supabase.createClient || (window.supabase && window.supabase.createClient);
-  if (!createClient) throw new Error('Supabase SDK загружен, но createClient не найден.');
-  return createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-}
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script>
+    const SUPABASE_URL = 'https://ahrfdakfvhyvphsdzwex.supabase.co';
+    const SUPABASE_ANON_KEY = 'sb_publishable_RLUW9ZE0dl6t46ZVkJXaKA_DpaGNwzv';
+    const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-const supabase = await initSupabaseClient();
+    let currentUser = null;
+    let currentChatId = null;
+    let currentChatUserId = null;
+    let currentChatUserNickname = '';
+    let messageChannel = null;
+    let reactionChannel = null;
+    let currentMessages = [];
 
-/* ---------------- rest of code (unchanged logic) ---------------- */
+    // Emojis for reactions
+    const reactionsList = ['👍', '❤️', '😂', '😮', '😢', '😡'];
 
-const EMOJI_SET = ["👍","❤️","😂","😮","😢","😡"];
-
-let state = {
-  user: null,
-  profile: null,
-  chats: [], // {id, other_id, other_nick, last_message, last_at}
-  activeChatId: null,
-  messages: {}, // chatId -> [messages]
-  reactions: {}, // messageId -> {reaction -> count, byUser: '👍' or null}
-  subMessages: null,
-  subReactions: null
-};
-
-/* ---------------- Utilities ---------------- */
-const $ = sel => document.querySelector(sel);
-const el = (tag, attrs={}, children=[]) => {
-  const e = document.createElement(tag);
-  Object.entries(attrs).forEach(([k,v])=>{
-    if(k === "class") e.className = v;
-    else if(k.startsWith("on")) e.addEventListener(k.slice(2), v);
-    else e.setAttribute(k, v);
-  });
-  (Array.isArray(children) ? children : [children]).forEach(c=>{
-    if(typeof c === "string") e.appendChild(document.createTextNode(c));
-    else if(c) e.appendChild(c);
-  });
-  return e;
-};
-const fmtTime = dt => {
-  const d = new Date(dt);
-  return d.toLocaleString();
-};
-const notifyPermission = async () => {
-  if (!("Notification" in window)) return false;
-  if (Notification.permission === "granted") return true;
-  if (Notification.permission !== "denied") {
-    const p = await Notification.requestPermission();
-    return p === "granted";
-  }
-  return false;
-};
-
-/* ---------------- Auth UI & Flow ---------------- */
-const authControls = $("#authControls");
-const authScreen = $("#authScreen");
-const chatScreen = $("#chatScreen");
-const searchScreen = $("#searchScreen");
-const chatsListContainer = $("#chatsListContainer");
-const searchInput = $("#searchInput");
-const searchBtn = $("#searchBtn");
-const onlineStatus = $("#onlineStatus");
-
-function showAuth() {
-  authScreen.style.display = "block";
-  chatScreen.style.display = "none";
-  searchScreen.style.display = "none";
-  renderAuthScreen();
-}
-
-function showMainUI() {
-  authScreen.style.display = "none";
-  chatScreen.style.display = "block";
-  searchScreen.style.display = "none";
-  renderTopAuthControls();
-  refreshChatsList();
-  subscribeRealtime();
-}
-
-function renderTopAuthControls(){
-  authControls.innerHTML = "";
-  if (!state.user) return;
-  const nick = state.profile?.nickname || "@не задан";
-  const email = state.user.email || "";
-  const div = el("div", {style:"display:flex;gap:8px;align-items:center"});
-  div.appendChild(el("div", {}, [`${nick}`]));
-  const out = el("button", {onClick:logout, class:"btn-ghost"}, ["Выйти"]);
-  div.appendChild(out);
-  authControls.appendChild(div);
-}
-
-function renderAuthScreen(){
-  authScreen.innerHTML = "";
-  const wrap = el("div", {}, [
-    el("h1", {}, ["Вход / Регистрация"]),
-    el("div", {class:"muted"}, ["Email + пароль. После регистрации нужно указать уникальный ник @nickname."])
-  ]);
-  const emailF = el("input", {placeholder:"Email", id:"authEmail"});
-  const passF = el("input", {placeholder:"Пароль", type:"password", id:"authPass"});
-  const signInBtn = el("button", {onClick:signin}, ["Войти"]);
-  const signUpBtn = el("button", {onClick:signup}, ["Зарегистрироваться"]);
-  const nicknameWrap = el("div", {id:"nicknameSetup", style:"margin-top:12px;display:none"});
-  const nickInput = el("input", {placeholder:"@nickname", id:"nickInput"});
-  const nickSave = el("button", {onClick:saveNickname}, ["Сохранить ник"]);
-  nicknameWrap.appendChild(nickInput); nicknameWrap.appendChild(nickSave);
-
-  wrap.appendChild(el("div", {class:"field"}, [emailF, passF]));
-  wrap.appendChild(el("div", {style:"display:flex;gap:8px"}, [signInBtn, signUpBtn]));
-  wrap.appendChild(nicknameWrap);
-  authScreen.appendChild(wrap);
-}
-
-async function signup(){
-  const email = $("#authEmail").value.trim();
-  const password = $("#authPass").value;
-  if(!email || !password){ alert("Заполни email и пароль"); return; }
-  const { data, error } = await supabase.auth.signUp({ email, password });
-  if (error) return alert(error.message);
-  if (data?.user){
-    state.user = data.user;
-    document.getElementById("nicknameSetup").style.display = "block";
-    alert("Регистрация успешна. Пожалуйста, укажи уникальный ник (формат @nickname).");
-  } else {
-    alert("Проверь почту: тебе отправлено письмо для подтверждения. После подтверждения войди и установи никнейм.");
-  }
-}
-
-async function signin(){
-  const email = $("#authEmail").value.trim();
-  const password = $("#authPass").value;
-  if(!email || !password){ alert("Заполни email и пароль"); return; }
-  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-  if (error) return alert(error.message);
-  state.user = data.user;
-  const { data: profile, error: pErr } = await supabase.from("profiles").select("*").eq("id", state.user.id).single();
-  if (!profile) {
-    showAuth();
-    document.getElementById("nicknameSetup").style.display = "block";
-  } else {
-    state.profile = profile;
-    showMainUI();
-  }
-}
-
-async function saveNickname(){
-  const v = document.getElementById("nickInput").value.trim();
-  if(!v || !v.startsWith("@")) return alert("Ник должен начинаться с @");
-  if(!state.user) return alert("Сначала войди");
-  const { data: existing } = await supabase.from("profiles").select("id").ilike("nickname", v).limit(1);
-  if (existing && existing.length>0) return alert("Ник уже занят");
-  const { data, error } = await supabase.from("profiles").insert([{
-    id: state.user.id,
-    email: state.user.email,
-    nickname: v
-  }]);
-  if (error) return alert(error.message);
-  state.profile = data[0];
-  document.getElementById("nicknameSetup").style.display = "none";
-  showMainUI();
-}
-
-async function logout(){
-  await supabase.auth.signOut();
-  state.user = null;
-  state.profile = null;
-  renderAuthScreen();
-  authControls.innerHTML = "";
-  authScreen.style.display = "block";
-  chatScreen.style.display = "none";
-}
-
-/* ---------------- Search users & open chat ---------------- */
-searchBtn.addEventListener("click", async ()=>{
-  const q = searchInput.value.trim();
-  if(!q) return alert("Введи @nickname");
-  await searchUsers(q);
-});
-
-async function searchUsers(q){
-  searchScreen.style.display = "block";
-  chatScreen.style.display = "none";
-  const elWrap = $("#searchScreen");
-  elWrap.innerHTML = "";
-  elWrap.appendChild(el("div", {class:"small muted"}, [`Результаты поиска для ${q}`]));
-  const { data, error } = await supabase.from("profiles").select("id,nickname,created_at").ilike("nickname", `${q}%`).limit(20);
-  if (error) return alert(error.message);
-  if (!data || data.length === 0){
-    elWrap.appendChild(el("div", {class:"empty"}, ["Пользователи не найдены"]));
-    return;
-  }
-  data.forEach(row=>{
-    const item = el("div", {class:"chat-item"}, [
-      el("div", {class:"nick"}, [row.nickname]),
-      el("div", {class:"muted right"}, [new Date(row.created_at).toLocaleDateString()])
-    ]);
-    item.addEventListener("click", ()=> openChatWithUser(row));
-    elWrap.appendChild(item);
-  });
-}
-
-async function openChatWithUser(userProfile){
-  if(!state.user) return alert("Войди сначала");
-  const creator = state.user.id;
-  const other = userProfile.id;
-  try{
-    const { data, error } = await supabase.rpc("create_private_chat", {creator_uuid: creator, other_uuid: other});
-    if (error) throw error;
-    const chatId = data;
-    await openChat(chatId);
-    chatScreen.style.display = "block";
-    searchScreen.style.display = "none";
-  } catch(e){
-    alert("Ошибка при создании чата: " + e.message);
-  }
-}
-
-/* ---------------- Chats list & messages ---------------- */
-async function refreshChatsList(){
-  if(!state.user) return;
-  const { data: chatRows, error: e2 } = await supabase
-    .from("chat_members")
-    .select("chat_id")
-    .eq("member_id", state.user.id);
-  if (e2) return console.error(e2);
-  const ids = chatRows.map(r=>r.chat_id);
-  if (ids.length === 0){
-    chatsListContainer.innerHTML = '<div class="empty">Нет чатов. Найди людей через поиск.</div>';
-    return;
-  }
-  const { data: chatsMeta } = await supabase.from("chats").select("id,created_at").in("id", ids);
-  const { data: lastMsgs } = await supabase
-    .from("messages")
-    .select("id,chat_id,sender_id,text,created_at")
-    .in("chat_id", ids)
-    .order("created_at", { ascending: false })
-    .limit(200);
-  const lastByChat = {};
-  (lastMsgs||[]).forEach(m=>{
-    if(!lastByChat[m.chat_id]) lastByChat[m.chat_id] = m;
-    else if (new Date(m.created_at) > new Date(lastByChat[m.chat_id].created_at)) lastByChat[m.chat_id] = m;
-  });
-  const { data: members } = await supabase
-    .from("chat_members")
-    .select("chat_id,member_id,profiles(nickname)")
-    .in("chat_id", ids);
-  const mapOther = {};
-  members.forEach(m=>{
-    if(m.member_id !== state.user.id){
-      mapOther[m.chat_id] = m.profiles;
-    }
-  });
-  state.chats = chatsMeta.map(c => ({
-    id: c.id,
-    created_at: c.created_at,
-    other: mapOther[c.id] || {nickname: "@unknown"},
-    last_message: lastByChat[c.id]?.text || "",
-    last_at: lastByChat[c.id]?.created_at || c.created_at
-  }));
-  renderChatsList();
-}
-
-function renderChatsList(){
-  chatsListContainer.innerHTML = "";
-  if (!state.chats || state.chats.length === 0){
-    chatsListContainer.innerHTML = '<div class="empty">Нет чатов. Найди людей через поиск.</div>';
-    return;
-  }
-  state.chats.forEach(c=>{
-    const item = el("div", {class:"chat-item"}, [
-      el("div", {}, [c.other.nickname || "@unknown"]),
-      el("div", {class:"muted right"}, [c.last_message ? new Date(c.last_at).toLocaleTimeString() : ""])
-    ]);
-    item.addEventListener("click", ()=> openChat(c.id));
-    chatsListContainer.appendChild(item);
-  });
-}
-
-async function openChat(chatId){
-  state.activeChatId = chatId;
-  chatScreen.innerHTML = "";
-  const header = el("div", {style:"display:flex;align-items:center;gap:8px;justify-content:space-between"});
-  const otherNick = (state.chats.find(c=>c.id===chatId)?.other?.nickname) || "@чат";
-  header.appendChild(el("div", {style:"font-weight:700"}, [otherNick]));
-  const open = el("div", {}, [
-    el("button", {onClick: ()=>{ /* placeholder */ }, class:"btn-ghost"}, ["Инфо"])
-  ]);
-  header.appendChild(open);
-  chatScreen.appendChild(header);
-
-  const messagesWrap = el("div", {class:"messages", style:"flex:1;min-height:0"});
-  const win = el("div", {class:"messages-window", id:"messagesWindow"});
-  messagesWrap.appendChild(win);
-  const composer = el("div", {class:"composer"}, [
-    el("input", {placeholder:"Написать сообщение...", id:"messageInput"}),
-    el("button", {onClick:sendMessage}, ["Отправить"])
-  ]);
-  chatScreen.appendChild(messagesWrap);
-  chatScreen.appendChild(composer);
-
-  await loadMessages(chatId);
-  setTimeout(()=> scrollToBottom(), 50);
-}
-
-async function loadMessages(chatId){
-  const { data, error } = await supabase
-    .from("messages")
-    .select("id,chat_id,sender_id,text,created_at")
-    .eq("chat_id", chatId)
-    .order("created_at", { ascending: true })
-    .limit(1000);
-  if (error) return console.error(error);
-  state.messages[chatId] = data || [];
-  const { data: reacts } = await supabase.from("message_reactions").select("id,message_id,user_id,reaction");
-  state.reactions = {};
-  (reacts||[]).forEach(r=>{
-    state.reactions[r.message_id] = state.reactions[r.message_id] || {counts:{}, byUser:null};
-    state.reactions[r.message_id].counts[r.reaction] = (state.reactions[r.message_id].counts[r.reaction]||0)+1;
-    if (r.user_id === state.user.id) state.reactions[r.message_id].byUser = r.reaction;
-  });
-  renderMessages(chatId);
-}
-
-function renderMessages(chatId){
-  const win = document.getElementById("messagesWindow");
-  win.innerHTML = "";
-  const msgs = state.messages[chatId] || [];
-  msgs.forEach(m=>{
-    const isMe = m.sender_id === state.user.id;
-    const mdiv = el("div", {class:"msg " + (isMe ? "me" : "other")}, [
-      el("div", {}, [m.text]),
-      el("div", {class:"msg-meta"}, [
-        el("div", {class:"muted"}, [ (isMe? "Ты" : "") + " • " + new Date(m.created_at).toLocaleString() ]),
-        el("div", {class:"reactions"}, [ renderReactionsUI(m) ])
-      ])
-    ]);
-    win.appendChild(mdiv);
-  });
-  scrollToBottom();
-}
-
-function renderReactionsUI(message){
-  const wrapper = el("div");
-  const rstate = state.reactions[message.id] || {counts:{}, byUser:null};
-  EMOJI_SET.forEach(em=>{
-    const count = rstate.counts[em] || 0;
-    const btn = el("span", {class:"reaction " + ((rstate.byUser === em) ? "active" : ""), onclick: ()=> toggleReaction(message, em) }, [ count ? `${em} ${count}` : em ]);
-    wrapper.appendChild(btn);
-  });
-  return wrapper;
-}
-
-async function toggleReaction(message, em){
-  if (!state.user) return alert("Войди для реакции");
-  const existing = state.reactions[message.id]?.byUser || null;
-  try {
-    if (existing === em) {
-      const { error } = await supabase.from("message_reactions").delete().match({ message_id: message.id, user_id: state.user.id });
-      if (error) throw error;
-    } else {
-      const { error } = await supabase.from("message_reactions").upsert({
-        message_id: message.id,
-        user_id: state.user.id,
-        reaction: em
-      }, { onConflict: ["message_id","user_id"] });
-      if (error) throw error;
-    }
-  } catch(e){
-    alert("Ошибка реакции: " + e.message);
-  }
-}
-
-async function sendMessage(){
-  const inp = document.getElementById("messageInput");
-  const text = inp.value.trim();
-  if(!text) return;
-  if(!state.activeChatId) return alert("Чат не выбран");
-  const payload = {
-    chat_id: state.activeChatId,
-    sender_id: state.user.id,
-    text
-  };
-  const { data, error } = await supabase.from("messages").insert([payload]);
-  if (error) return alert(error.message);
-  inp.value = "";
-}
-
-/* ---------------- Realtime subscriptions ---------------- */
-function subscribeRealtime(){
-  if (state.subMessages) state.subMessages.unsubscribe();
-  if (state.subReactions) state.subReactions.unsubscribe();
-
-  state.subMessages = supabase
-    .channel('public:messages')
-    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, payload => {
-      const m = payload.new;
-      state.messages[m.chat_id] = state.messages[m.chat_id] || [];
-      state.messages[m.chat_id].push(m);
-      const chat = state.chats.find(c=>c.id===m.chat_id);
-      if (chat){
-        chat.last_message = m.text;
-        chat.last_at = m.created_at;
+    // Handle auth state change
+    supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_IN') {
+        handleLoggedIn(session.user);
       }
-      if (document.hidden && m.sender_id !== state.user.id) {
-        (async ()=> {
-          const ok = await notifyPermission();
-          if (ok) {
-            const { data } = await supabase.from("profiles").select("nickname").eq("id", m.sender_id).single();
-            const title = data?.nickname || "Новое сообщение";
-            new Notification(title, { body: m.text });
-          }
-        })();
+      if (event === 'SIGNED_OUT') {
+        handleLoggedOut();
       }
-      if (state.activeChatId === m.chat_id) renderMessages(m.chat_id);
-      renderChatsList();
-    })
-    .subscribe();
+    });
 
-  state.subReactions = supabase
-    .channel('public:reactions')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'message_reactions' }, payload => {
-      const r = payload.new || payload.old;
-      refreshReactionsForMessage(r.message_id);
-    })
-    .subscribe();
-}
+    // Check existing session on load
+    window.addEventListener('load', async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        handleLoggedIn(session.user);
+      } else {
+        showAuth();
+      }
+    });
 
-async function refreshReactionsForMessage(message_id){
-  const { data, error } = await supabase.from("message_reactions").select("user_id,reaction").eq("message_id", message_id);
-  if (error) return console.error(error);
-  const obj = {counts:{}, byUser:null};
-  (data||[]).forEach(r=>{
-    obj.counts[r.reaction] = (obj.counts[r.reaction]||0)+1;
-    if (r.user_id === state.user.id) obj.byUser = r.reaction;
-  });
-  state.reactions[message_id] = obj;
-  if (state.activeChatId) renderMessages(state.activeChatId);
-}
+    // Show/hide auth/main views
+    function showAuth() {
+      document.getElementById('auth').style.display = 'flex';
+      document.getElementById('main-view').style.display = 'none';
+    }
+    function showMain() {
+      document.getElementById('auth').style.display = 'none';
+      document.getElementById('main-view').style.display = 'flex';
+    }
 
-/* ---------------- Helpers ---------------- */
-function scrollToBottom(){
-  const win = document.getElementById("messagesWindow");
-  if (!win) return;
-  win.scrollTop = win.scrollHeight + 1000;
-}
+    // Login
+    document.getElementById('login-button').addEventListener('click', async () => {
+      const email = document.getElementById('login-email').value;
+      const password = document.getElementById('login-password').value;
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) {
+        alert(error.message);
+      }
+    });
 
-/* ---------------- Init: auth state & start ---------------- */
-(async function init(){
-  const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-    if (session?.user){
-      state.user = session.user;
-      supabase.from("profiles").select("*").eq("id", state.user.id).single()
-        .then(res=>{
-          if (res.data) {
-            state.profile = res.data;
-            showMainUI();
-          } else {
-            showAuth();
-            document.getElementById("nicknameSetup").style.display = "block";
-          }
+    // Show signup form
+    document.getElementById('show-signup').addEventListener('click', (e) => {
+      e.preventDefault();
+      document.getElementById('login-view').style.display = 'none';
+      document.getElementById('signup-view').style.display = 'block';
+    });
+    // Show login form
+    document.getElementById('show-login').addEventListener('click', (e) => {
+      e.preventDefault();
+      document.getElementById('signup-view').style.display = 'none';
+      document.getElementById('login-view').style.display = 'block';
+    });
+
+    // Signup
+    document.getElementById('signup-button').addEventListener('click', async () => {
+      const email = document.getElementById('signup-email').value;
+      const password = document.getElementById('signup-password').value;
+      const password2 = document.getElementById('signup-password2').value;
+      if (password !== password2) {
+        alert('Пароли не совпадают');
+        return;
+      }
+      const { data, error } = await supabase.auth.signUp({ email, password });
+      if (error) {
+        alert(error.message);
+      } else {
+        // Show nickname input
+        document.getElementById('signup-view').style.display = 'none';
+        document.getElementById('nickname-view').style.display = 'block';
+      }
+    });
+
+    // Save nickname after signup
+    document.getElementById('nickname-button').addEventListener('click', async () => {
+      let nickname = document.getElementById('nickname-input').value.trim();
+      if (!nickname.startsWith('@')) nickname = '@' + nickname;
+      // Check uniqueness
+      const { data: exists } = await supabase.from('profiles').select('id').eq('nickname', nickname);
+      if (exists && exists.length > 0) {
+        alert('Никнейм уже занят');
+        return;
+      }
+      const { data: { user } } = await supabase.auth.getUser();
+      const { error } = await supabase.from('profiles').insert([{ id: user.id, email: user.email, nickname }]);
+      if (error) {
+        alert('Ошибка при сохранении никнейма');
+      } else {
+        handleLoggedIn(user);
+      }
+    });
+
+    // Logout
+    document.getElementById('logout-button').addEventListener('click', async () => {
+      await supabase.auth.signOut();
+    });
+
+    // Handle login successful
+    async function handleLoggedIn(user) {
+      currentUser = user;
+      document.getElementById('current-user').textContent = user.email;
+      // Fetch or create profile
+      const { data: profile, error } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+      if (error || !profile) {
+        showMain();
+        document.getElementById('nickname-view').style.display = 'block';
+        return;
+      }
+      currentUser.nickname = profile.nickname;
+      document.getElementById('current-user').textContent = profile.nickname;
+      showMain();
+      loadChatList();
+      requestNotificationPermission();
+    }
+
+    // Handle logout
+    function handleLoggedOut() {
+      currentUser = null;
+      currentChatId = null;
+      document.getElementById('chat-list').innerHTML = '';
+      document.getElementById('messages').innerHTML = '';
+      document.getElementById('auth').style.display = 'flex';
+      document.getElementById('main-view').style.display = 'none';
+    }
+
+    // Request browser notification permission
+    function requestNotificationPermission() {
+      if ("Notification" in window && Notification.permission !== 'granted') {
+        Notification.requestPermission();
+      }
+    }
+
+    // Load list of chats
+    async function loadChatList() {
+      const { data: chatMembers } = await supabase.from('chat_members').select('chat_id').eq('member_id', currentUser.id);
+      document.getElementById('chat-list').innerHTML = '';
+      for (let cm of chatMembers) {
+        const chatId = cm.chat_id;
+        const { data: others } = await supabase.from('chat_members').select('member_id').eq('chat_id', chatId).neq('member_id', currentUser.id);
+        const otherId = (others && others[0]) ? others[0].member_id : null;
+        if (!otherId) continue;
+        const { data: prof } = await supabase.from('profiles').select('nickname').eq('id', otherId).single();
+        const nickname = prof.nickname;
+        const li = document.createElement('li');
+        li.textContent = nickname;
+        li.dataset.chatId = chatId;
+        li.dataset.chatUserId = otherId;
+        li.addEventListener('click', () => openChat(chatId, otherId, nickname));
+        document.getElementById('chat-list').appendChild(li);
+      }
+    }
+
+    // Open or create chat with user
+    async function openChat(chatId, userId, nickname) {
+      currentChatId = chatId;
+      currentChatUserId = userId;
+      currentChatUserNickname = nickname;
+      document.getElementById('chat-with').textContent = nickname;
+      if (window.innerWidth <= 600) {
+        document.getElementById('sidebar').style.display = 'none';
+        document.getElementById('chat-view').style.display = 'flex';
+      }
+      document.getElementById('chat-list-view').style.display = 'none';
+      document.getElementById('user-search-view').style.display = 'none';
+      document.getElementById('chat-view').style.display = 'flex';
+      if (messageChannel) supabase.removeChannel(messageChannel);
+      if (reactionChannel) supabase.removeChannel(reactionChannel);
+      loadMessages();
+    }
+
+    // Load or create chat by userId
+    async function getOrCreateChat(otherId) {
+      const { data: chats1 } = await supabase.from('chat_members').select('chat_id').eq('member_id', currentUser.id);
+      const { data: chats2 } = await supabase.from('chat_members').select('chat_id').eq('member_id', otherId);
+      const ids1 = chats1.map(c => c.chat_id);
+      const ids2 = chats2.map(c => c.chat_id);
+      const common = ids1.filter(id => ids2.includes(id));
+      if (common.length > 0) {
+        return common[0];
+      } else {
+        const { data: newChat } = await supabase.from('chats').insert([{}]).select('id').single();
+        const newChatId = newChat.id;
+        await supabase.from('chat_members').insert([
+          { chat_id: newChatId, member_id: currentUser.id },
+          { chat_id: newChatId, member_id: otherId }
+        ]);
+        loadChatList();
+        return newChatId;
+      }
+    }
+
+    // Search users
+    document.getElementById('new-chat-button').addEventListener('click', () => {
+      document.getElementById('chat-list-view').style.display = 'none';
+      document.getElementById('user-search-view').style.display = 'block';
+    });
+    document.getElementById('back-to-chats').addEventListener('click', () => {
+      document.getElementById('user-search-view').style.display = 'none';
+      document.getElementById('chat-list-view').style.display = 'block';
+    });
+
+    // Perform search on enter
+    document.getElementById('search-nickname').addEventListener('keypress', async (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const term = document.getElementById('search-nickname').value.trim();
+        if (!term) return;
+        let query = term;
+        if (!query.startsWith('@')) query = '@' + query;
+        const { data: users } = await supabase.from('profiles').select('id,nickname').ilike('nickname', '%' + query + '%');
+        const ul = document.getElementById('search-results');
+        ul.innerHTML = '';
+        users.forEach(user => {
+          if (user.id === currentUser.id) return;
+          const li = document.createElement('li');
+          li.textContent = user.nickname;
+          li.addEventListener('click', async () => {
+            const chatId = await getOrCreateChat(user.id);
+            openChat(chatId, user.id, user.nickname);
+            ul.innerHTML = '';
+            document.getElementById('search-nickname').value = '';
+          });
+          ul.appendChild(li);
         });
-    } else {
-      state.user = null;
-      state.profile = null;
-      showAuth();
-    }
-  });
-  const { data: { user } } = await supabase.auth.getUser();
-  if (user) {
-    state.user = user;
-    const { data: profile } = await supabase.from("profiles").select("*").eq("id", user.id).single();
-    if (profile) { state.profile = profile; showMainUI(); } else showAuth();
-  } else {
-    showAuth();
-  }
+      }
+    });
 
-  onlineStatus.textContent = navigator.onLine ? "online" : "offline";
-  window.addEventListener("online", ()=>onlineStatus.textContent = "online");
-  window.addEventListener("offline", ()=>onlineStatus.textContent = "offline");
-})();
-</script>
+    // Go back to chat list on mobile
+    document.getElementById('back-to-chat-list').addEventListener('click', () => {
+      document.getElementById('chat-view').style.display = 'none';
+      document.getElementById('sidebar').style.display = 'flex';
+      document.getElementById('chat-list-view').style.display = 'block';
+    });
+
+    // Load messages for current chat
+    async function loadMessages() {
+      if (!currentChatId) return;
+      const { data: messages } = await supabase.from('messages').select('*').eq('chat_id', currentChatId).order('created_at', { ascending: true });
+      currentMessages = messages;
+      document.getElementById('messages').innerHTML = '';
+      if (messages) {
+        for (let msg of messages) {
+          addMessageToUI(msg);
+        }
+        scrollMessagesToBottom();
+      }
+      const messageIds = messages.map(m => m.id);
+      if (messageIds.length > 0) {
+        const { data: reactions } = await supabase.from('message_reactions').select('*').in('message_id', messageIds);
+        reactions.forEach(r => {
+          updateReactionUI(r);
+        });
+      }
+      // Subscribe to new messages
+      messageChannel = supabase.channel(`messages:${currentChatId}`)
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `chat_id=eq.${currentChatId}` }, (payload) => {
+          const newMsg = payload.new;
+          addMessageToUI(newMsg);
+          scrollMessagesToBottom();
+          if (document.hidden && newMsg.sender_id === currentChatUserId) {
+            new Notification(currentChatUserNickname, { body: newMsg.text });
+          }
+        })
+        .subscribe();
+      // Subscribe to reactions
+      reactionChannel = supabase.channel(`reactions:${currentChatId}`)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'message_reactions' }, (payload) => {
+          if (payload.new && !payload.old) {
+            updateReactionUI(payload.new);
+          } else if (payload.old) {
+            loadMessages();
+          }
+        })
+        .subscribe();
+    }
+
+    // Add a message element to UI
+    function addMessageToUI(msg) {
+      const messagesDiv = document.getElementById('messages');
+      const div = document.createElement('div');
+      div.classList.add('message');
+      div.classList.add(msg.sender_id === currentUser.id ? 'sent' : 'received');
+      div.dataset.messageId = msg.id;
+      const textDiv = document.createElement('div');
+      textDiv.textContent = msg.text;
+      div.appendChild(textDiv);
+      const reactionsDiv = document.createElement('div');
+      reactionsDiv.classList.add('reactions');
+      reactionsList.forEach(emoji => {
+        const span = document.createElement('span');
+        span.classList.add('reaction');
+        span.dataset.reaction = emoji;
+        span.textContent = emoji;
+        span.addEventListener('click', () => reactToMessage(msg.id, emoji));
+        const countSpan = document.createElement('span');
+        countSpan.textContent = '0';
+        countSpan.classList.add('reaction-count');
+        span.appendChild(countSpan);
+        reactionsDiv.appendChild(span);
+      });
+      div.appendChild(reactionsDiv);
+      messagesDiv.appendChild(div);
+    }
+
+    // Scroll messages to bottom
+    function scrollMessagesToBottom() {
+      const messagesDiv = document.getElementById('messages');
+      messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    }
+
+    // Handle reaction click
+    async function reactToMessage(messageId, emoji) {
+      const existing = await supabase.from('message_reactions').select('*').eq('message_id', messageId).eq('user_id', currentUser.id).single();
+      if (existing.data) {
+        if (existing.data.reaction === emoji) {
+          await supabase.from('message_reactions').delete().eq('message_id', messageId).eq('user_id', currentUser.id);
+        } else {
+          await supabase.from('message_reactions').upsert({ message_id: messageId, user_id: currentUser.id, reaction: emoji });
+        }
+      } else {
+        await supabase.from('message_reactions').insert({ message_id: messageId, user_id: currentUser.id, reaction: emoji });
+      }
+    }
+
+    // Update reaction UI for a message
+    function updateReactionUI(r) {
+      const msgId = r.message_id;
+      const emoji = r.reaction;
+      const span = document.querySelector(`.message[data-message-id="${msgId}"] .reaction[data-reaction="${emoji}"]`);
+      const countSpan = span ? span.querySelector('.reaction-count') : null;
+      if (countSpan) {
+        let count = parseInt(countSpan.textContent);
+        if (isNaN(count)) count = 0;
+        count++;
+        countSpan.textContent = count;
+      }
+    }
+
+    // Send message
+    document.getElementById('send-button').addEventListener('click', async () => {
+      const text = document.getElementById('message-input').value;
+      if (text && currentChatId) {
+        await supabase.from('messages').insert([{ chat_id: currentChatId, sender_id: currentUser.id, text }]);
+        document.getElementById('message-input').value = '';
+      }
+    });
+
+    // Send message on Enter key
+    document.getElementById('message-input').addEventListener('keypress', async (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const text = document.getElementById('message-input').value;
+        if (text && currentChatId) {
+          await supabase.from('messages').insert([{ chat_id: currentChatId, sender_id: currentUser.id, text }]);
+          document.getElementById('message-input').value = '';
+        }
+      }
+    });
+  </script>
 </body>
 </html>
