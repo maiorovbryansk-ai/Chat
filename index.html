@@ -1047,70 +1047,79 @@ async function loadUserData() {
     }
 }
 
+// Обновите функцию loadChats
 async function loadChats() {
     try {
-        const { data: chats, error } = await supabaseClient
-            .from('chats')
+        // ПРОСТОЙ ЗАПРОС - получаем чаты пользователя
+        const { data: userChats, error: chatsError } = await supabaseClient
+            .from('chat_members')
             .select(`
-                *,
-                chat_members!inner (
-                    user:profiles (
-                        id,
-                        display_name,
-                        email
-                    )
-                )
+                chat_id,
+                chats (*)
             `)
-            .order('last_message_at', { ascending: false });
+            .eq('user_id', appState.user.id);
         
-        if (error) throw error;
+        if (chatsError) throw chatsError;
         
-        // Получаем последние сообщения отдельно
-        const chatIds = chats.map(chat => chat.id);
-        const { data: lastMessages, error: messagesError } = await supabaseClient
-            .from('messages')
-            .select('chat_id, content, created_at')
-            .in('chat_id', chatIds)
-            .order('created_at', { ascending: false });
+        // Обрабатываем каждый чат
+        appState.chats = [];
         
-        if (messagesError) {
-            console.error('Error loading last messages:', messagesError);
-        }
-        
-        // Обрабатываем чаты
-        appState.chats = await Promise.all(chats.map(async chat => {
-            const otherMember = chat.chat_members
-                .find(member => member.user.id !== appState.user.id);
+        for (const userChat of userChats) {
+            const chat = userChat.chats;
             
-            let displayName = 'Unknown User';
-            let email = '';
+            // Получаем другого участника чата
+            const { data: otherMembers, error: membersError } = await supabaseClient
+                .from('chat_members')
+                .select(`
+                    user_id,
+                    profiles (display_name, email)
+                `)
+                .eq('chat_id', chat.id)
+                .neq('user_id', appState.user.id)
+                .limit(1);
             
-            if (otherMember && otherMember.user) {
-                displayName = otherMember.user.display_name || otherMember.user.email.split('@')[0];
-                email = otherMember.user.email;
-                appState.profilesCache.set(otherMember.user.id, {
-                    display_name: displayName,
-                    email: email
+            if (!membersError && otherMembers && otherMembers.length > 0) {
+                const otherUser = otherMembers[0].profiles;
+                
+                // Получаем последнее сообщение
+                const { data: lastMessage, error: msgError } = await supabaseClient
+                    .from('messages')
+                    .select('content, created_at')
+                    .eq('chat_id', chat.id)
+                    .order('created_at', { ascending: false })
+                    .limit(1);
+                
+                appState.chats.push({
+                    id: chat.id,
+                    display_name: otherUser?.display_name || 
+                                 otherUser?.email?.split('@')[0] || 
+                                 'Unknown User',
+                    email: otherUser?.email || '',
+                    last_message: lastMessage?.[0]?.content || 'No messages yet',
+                    last_message_at: lastMessage?.[0]?.created_at || chat.created_at,
+                    is_group: chat.is_group
                 });
             }
-            
-            const lastMessage = lastMessages?.find(m => m.chat_id === chat.id);
-            
-            return {
-                id: chat.id,
-                display_name: displayName,
-                email: email,
-                last_message: lastMessage?.content || 'No messages yet',
-                last_message_at: lastMessage?.created_at || chat.created_at,
-                is_group: chat.is_group
-            };
-        }));
+        }
+        
+        // Сортируем по времени последнего сообщения
+        appState.chats.sort((a, b) => 
+            new Date(b.last_message_at) - new Date(a.last_message_at)
+        );
         
         updateChatsListUI();
         
     } catch (error) {
         console.error('Load chats error:', error);
-        throw error;
+        // При ошибке показываем пустой список
+        appState.chats = [];
+        elements.chatsList.innerHTML = `
+            <div class="empty-state">
+                <div class="empty-state-icon">⚠️</div>
+                <p>Error loading chats</p>
+                <p style="font-size: 0.875rem;">${error.message}</p>
+            </div>
+        `;
     }
 }
 
