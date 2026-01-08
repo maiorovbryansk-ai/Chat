@@ -1,17 +1,18 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Authenticating...</title>
+    <title>Redirect to PING Messenger</title>
     <script>
-        // Извлекаем токен из URL и передаем его в родительское окно
-        const hash = window.location.hash;
-        if (hash) {
-            window.opener.postMessage({ type: 'oauth-callback', hash: hash }, '*');
-            window.close();
-        }
+        // Автоматическое перенаправление на репозиторий с мессенджером
+        const repoName = 'Chat'; // Замените на имя вашего репозитория
+        window.location.href = `https://maiorovbryansk-ai.github.io/${repoName}/`;
     </script>
 </head>
 <body>
-    Authenticating, please wait...
+    <p>Redirecting to PING Messenger...</p>
+    <p>If not redirected, <a id="manualLink" href="#">click here</a></p>
+    <script>
+        document.getElementById('manualLink').href = `https://maiorovbryansk-ai.github.io/${repoName}/`;
+    </script>
 </body>
 </html>
